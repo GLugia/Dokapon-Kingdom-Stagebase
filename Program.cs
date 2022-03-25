@@ -25,11 +25,7 @@ namespace CharaReader
 				return;
 			}
 
-			/*if (!CountTypes(0xe820, 0xf254, offset_stagebase, 0x6C))
-			{
-				Console.Out.WriteLine($"Failed to count structs.");
-				return;
-			}*/
+			// if (!ReadBAS())
 			
 			if (!ReadCHR())
 			{
