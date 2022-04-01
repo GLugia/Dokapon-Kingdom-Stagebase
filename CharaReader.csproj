@@ -21,4 +21,9 @@
     </None>
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="data\bas_data\" />
+    <Folder Include="data\generic_data\" />
+  </ItemGroup>
+
 </Project>
