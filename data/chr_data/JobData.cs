@@ -1,6 +1,5 @@
 ﻿using CharaReader.data.chr_data.structs;
 using System;
-using System.Linq;
 
 namespace CharaReader.data.chr_data
 {
@@ -131,7 +130,7 @@ namespace CharaReader.data.chr_data
 			writer.WriteStructs(0x45, model_0_3s);
 			writer.WriteStructs(0x29, model_4_7s);
 			writer.WriteStructs(0x43, unk_43);
-			writer.WriteStructs(0x38, unk_38.Where(a => a != null).ToArray());
+			writer.WriteStructs(0x38, unk_38);
 			for (int i = 0; i < unk_39.Length; i++)
 			{
 				writer.ReservePointer(0x39, $"39_ptr_{i}", 2);
