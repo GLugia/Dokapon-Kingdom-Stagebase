@@ -1,14 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace CharaReader.data.chr_data.structs
+﻿namespace CharaReader.data.chr_data.structs
 {
 	public struct MagicItem
 	{
+		public short item_id;
 		public short icon;
 		public string name;
 		public int price;

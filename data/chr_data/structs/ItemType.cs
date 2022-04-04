@@ -2,6 +2,7 @@
 {
 	public struct ItemType
 	{
+		public int item_id;
 		public string name;
 	}
 }

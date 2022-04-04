@@ -1,14 +1,9 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace CharaReader.data.chr_data.structs
+﻿namespace CharaReader.data.chr_data.structs
 {
 	public struct JobMoney
 	{
+		public byte item_id;
+		public byte gender_id;
 		public byte bonus_salary;
 		public byte job_id;
 		public int starting_money;

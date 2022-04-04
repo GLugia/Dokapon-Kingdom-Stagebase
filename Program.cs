@@ -1,8 +1,5 @@
 ﻿using CharaReader.data;
-using CharaReader.data.chr_data.structs;
-using CharaReader.structs;
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -17,7 +14,15 @@ namespace CharaReader
 		{
 			var encodings = CodePagesEncodingProvider.Instance.GetEncodings().Select(a => a.DisplayName).ToArray();
 			shift_jis = CodePagesEncodingProvider.Instance.GetEncoding("shift-jis");
-			
+
+			StreamWriter writer = new(File.Create("temp.txt"));
+			for (byte b = 0; b < byte.MaxValue; b++)
+			{
+				writer.WriteLine($"\t\t\t/* {b.ToHexString()} */ null,");
+			}
+			writer.Flush();
+			writer.Close();
+
 			if (!ReadCHR())
 			{
 				Console.Out.WriteLine($"Failed to read GAME/STAGEBASE.DAT");

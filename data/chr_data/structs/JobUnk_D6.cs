@@ -1,15 +1,11 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace CharaReader.data.chr_data.structs
+﻿namespace CharaReader.data.chr_data.structs
 {
 	public struct JobUnk_D6
 	{
-		public int unk_00;
-		public int unk_01;
+		public int item_id;
+		public short unk_00;
+		public short unk_01;
+		public short unk_02;
+		public short unk_03;
 	}
 }

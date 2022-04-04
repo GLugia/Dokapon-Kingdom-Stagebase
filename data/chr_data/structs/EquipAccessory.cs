@@ -1,6 +1,4 @@
-﻿using System.IO;
-
-namespace CharaReader.data.chr_data.structs
+﻿namespace CharaReader.data.chr_data.structs
 {
 	public struct EquipAccessory
 	{

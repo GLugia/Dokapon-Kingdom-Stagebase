@@ -1,7 +1,7 @@
 ﻿namespace CharaReader.data.chr_data.structs
 {
-	public struct MagicElement
+	public struct JobUnk_8F
 	{
-		public string name;
+
 	}
 }

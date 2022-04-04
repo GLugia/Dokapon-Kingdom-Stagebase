@@ -1,12 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace CharaReader.data.chr_data
+﻿namespace CharaReader.data.chr_data
 {
-	class UnkData_XX
+	internal class UnkData_XX
 	{
 	}
 }

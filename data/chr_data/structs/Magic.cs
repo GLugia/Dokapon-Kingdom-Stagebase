@@ -1,9 +1,8 @@
-﻿using System.IO;
-
-namespace CharaReader.data.chr_data.structs
+﻿namespace CharaReader.data.chr_data.structs
 {
 	public struct Magic
 	{
+		public short item_id;
 		public short unk_00;
 		public string name;
 		public int price;

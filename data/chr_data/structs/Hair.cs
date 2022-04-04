@@ -1,9 +1,8 @@
-﻿using System.IO;
-
-namespace CharaReader.data.chr_data.structs
+﻿namespace CharaReader.data.chr_data.structs
 {
 	public struct Hair
 	{
+		public byte item_id;
 		public byte non_job_id;
 		public short icon_id;
 		public string name;

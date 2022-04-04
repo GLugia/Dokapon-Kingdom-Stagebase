@@ -1,7 +1,5 @@
 ﻿using CharaReader.data.chr_data;
 using System;
-using System.Linq;
-using System.Reflection;
 
 namespace CharaReader.data
 {
@@ -16,6 +14,7 @@ namespace CharaReader.data
 		public ItemData item_data;
 		public MagicData magic_data;
 		public JobData job_data;
+		public BuffData buff_data;
 		public int length;
 
 		public CHR(DataReader reader)
@@ -50,26 +49,21 @@ namespace CharaReader.data
 				class_data_end = reader.ReadString();
 				reader.offset = end;
 			}
+
+			buff_data = new(reader);
 			// add more here
 			;
 		}
 
 		public void Write(DataWriter writer)
 		{
-			writer.Write("@CHR");
-			int file_len_pos = writer.offset;
-			writer.offset += sizeof(int);
+			writer.ReservePointer(0x52484340, "chr_file_len_ptr");
 			writer.Write(0x30);
 			writer.offset = 0x30;
 
-			writer.Write(0x01);
-			int pre_name_pos = writer.offset;
-			writer.offset += sizeof(int);
+			writer.ReservePointer(0x01, "class_name_ptr");
 			writer.Write(class_data_start);
-			int post_name_pos = writer.offset;
-			writer.offset = pre_name_pos;
-			writer.Write(post_name_pos);
-			writer.offset = post_name_pos;
+			writer.WritePointer("class_name_ptr");
 
 			weapon_data.Write(writer);
 			shield_data.Write(writer);
@@ -79,20 +73,14 @@ namespace CharaReader.data
 			magic_data.Write(writer);
 			job_data.Write(writer);
 
-			writer.Write(0x01);
-			pre_name_pos = writer.offset;
-			writer.offset += sizeof(int);
+			writer.ReservePointer(0x01, "class_name_ptr");
 			writer.Write(class_data_end);
-			post_name_pos = writer.offset;
-			writer.offset = pre_name_pos;
-			writer.Write(post_name_pos);
-			writer.offset = post_name_pos;
+			writer.WritePointer("class_name_ptr");
 
+			buff_data.Write(writer);
 			// add more here
-			int len = writer.offset;
-			writer.offset = file_len_pos;
-			writer.Write(len);
-			writer.offset = len;
+
+			writer.WritePointer("chr_file_len_ptr");
 		}
 	}
 }

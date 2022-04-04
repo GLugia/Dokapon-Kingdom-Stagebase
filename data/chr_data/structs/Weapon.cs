@@ -1,9 +1,8 @@
-﻿using System.Runtime.InteropServices;
-
-namespace CharaReader.data.chr_data.structs
+﻿namespace CharaReader.data.chr_data.structs
 {
 	public struct Weapon
 	{
+		public short item_id;
 		public short icon_id;
 		public string name;
 		public byte unk_00;

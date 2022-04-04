@@ -2,6 +2,7 @@
 {
 	public struct Shield
 	{
+		public short item_id;
 		public short icon_id;
 		public string name;
 		public byte unk_00;

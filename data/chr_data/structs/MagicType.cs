@@ -1,7 +1,8 @@
 ﻿namespace CharaReader.data.chr_data.structs
 {
-	public struct MagicBase
+	public struct MagicType
 	{
+		public int item_id;
 		public string name;
 	}
 }

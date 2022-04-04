@@ -132,95 +132,189 @@ namespace CharaReader.data
 			return ret;
 		}
 
-		/// <summary>
-		/// If there is an array of data that is not an aligned string, it will not be read properly.
-		/// </summary>
-		/// <typeparam name="T"></typeparam>
-		/// <param name="_data"></param>
-		/// <param name="offset"></param>
-		/// <returns></returns>
+		public T[] ReadStructs<T>(int id) where T : struct
+		{
+			T[] ret = Array.Empty<T>();
+			T temp;
+			do
+			{
+				temp = ReadStruct<T>();
+				if (!temp.TryGetField("item_id", out dynamic item_id))
+				{
+					throw new Exception("Struct does not contain the correct ids.");
+				}
+				if (item_id > ret.Length - 1)
+				{
+					Array.Resize(ref ret, item_id + 1);
+				}
+				ret[item_id] = temp;
+			}
+			while (ReadInt32() == id);
+			offset -= sizeof(int);
+			return ret;
+		}
+
+		public T[][] ReadStructs2<T>(int id) where T : struct
+		{
+			T[][] ret = Array.Empty<T[]>();
+			T temp;
+			do
+			{
+				temp = ReadStruct<T>();
+				if (!temp.TryGetField("item_id", out dynamic item_id)
+					|| !temp.TryGetField("gender_id", out dynamic gender_id))
+				{
+					throw new Exception("Struct does not contain the correct ids.");
+				}
+				if (item_id > ret.Length - 1)
+				{
+					Array.Resize(ref ret, item_id + 1);
+					ret[item_id] = Array.Empty<T>();
+				}
+				if (gender_id > ret[item_id].Length - 1)
+				{
+					Array.Resize(ref ret[item_id], gender_id + 1);
+				}
+				ret[item_id][gender_id] = temp;
+			}
+			while (ReadInt32() == id);
+			offset -= sizeof(int);
+			return ret;
+		}
+
+		public T[][][] ReadStructs3<T>(int id) where T : struct
+		{
+			T[][][] ret = Array.Empty<T[][]>();
+			T temp;
+			do
+			{
+				temp = ReadStruct<T>();
+				if (!temp.TryGetField("item_id", out dynamic item_id)
+					|| !temp.TryGetField("gender_id", out dynamic gender_id)
+					|| !temp.TryGetField("extra_id", out dynamic extra_id))
+				{
+					throw new Exception("Struct does not contain the correct ids.");
+				}
+				if (item_id > ret.Length - 1)
+				{
+					Array.Resize(ref ret, item_id + 1);
+					ret[item_id] = Array.Empty<T[]>();
+				}
+				if (gender_id > ret[item_id].Length - 1)
+				{
+					Array.Resize(ref ret[item_id], gender_id + 1);
+					ret[item_id][gender_id] = Array.Empty<T>();
+				}
+				if (extra_id > ret[item_id][gender_id].Length - 1)
+				{
+					Array.Resize(ref ret[item_id][gender_id], extra_id + 1);
+				}
+				ret[item_id][gender_id][extra_id] = temp;
+			}
+			while (ReadInt32() == id);
+			offset -= sizeof(int);
+			return ret;
+		}
+
 		public T ReadStruct<T>() where T : struct
 		{
 			T ret = Activator.CreateInstance<T>();
 			TypedReference tref = __makeref(ret);
-			FieldInfo[] fields = ret.GetType().GetFields();
-			foreach (FieldInfo field in fields)
+			foreach (FieldInfo info in ret.GetType().GetFields())
 			{
-				switch (field.FieldType.Name.ToLowerInvariant())
+				switch (info.FieldType.Name.ToLowerInvariant())
 				{
 					case "bool":
 						{
-							field.SetValueDirect(tref, ReadBool());
+							info.SetValueDirect(tref, ReadBool());
 							break;
 						}
 					case "char":
 						{
-							field.SetValueDirect(tref, ReadChar());
+							info.SetValueDirect(tref, ReadChar());
 							break;
 						}
 					case "char[]":
 						{
-							field.SetValueDirect(tref, ReadString().ToCharArray());
+							info.SetValueDirect(tref, ReadString().ToCharArray());
 							break;
 						}
 					case "string":
 						{
-							field.SetValueDirect(tref, ReadString());
+							info.SetValueDirect(tref, ReadString());
 							break;
 						}
 					case "byte":
 						{
-							field.SetValueDirect(tref, ReadByte());
+							info.SetValueDirect(tref, ReadByte());
 							break;
 						}
 					case "sbyte":
 						{
-							field.SetValueDirect(tref, ReadSByte());
+							info.SetValueDirect(tref, ReadSByte());
 							break;
 						}
 					case "uint16":
 						{
-							field.SetValueDirect(tref, ReadUInt16());
+							info.SetValueDirect(tref, ReadUInt16());
 							break;
 						}
 					case "int16":
 						{
-							field.SetValueDirect(tref, ReadInt16());
+							info.SetValueDirect(tref, ReadInt16());
 							break;
 						}
 					case "uint32":
 						{
-							field.SetValueDirect(tref, ReadUInt32());
+							info.SetValueDirect(tref, ReadUInt32());
 							break;
 						}
 					case "int32":
 						{
 							int val = ReadInt32();
-							field.SetValueDirect(tref, val);
+							info.SetValueDirect(tref, val);
 							break;
 						}
 					case "uint64":
 						{
-							field.SetValueDirect(tref, ReadUInt64());
+							info.SetValueDirect(tref, ReadUInt64());
 							break;
 						}
 					case "int64":
 						{
-							field.SetValueDirect(tref, ReadInt64());
+							info.SetValueDirect(tref, ReadInt64());
 							break;
 						}
 					case "single":
 						{
-							field.SetValueDirect(tref, ReadSingle());
+							info.SetValueDirect(tref, ReadSingle());
 							break;
 						}
 					default:
 						{
-							throw new Exception($"Unhandled type '{field.FieldType}' in struct '{ret}'");
+							throw new Exception($"Unhandled type '{info.FieldType}' in struct '{ret}'");
 						}
 				}
 			}
 			return ret;
 		}
+
+		public string[] ReadDescriptions()
+		{
+			string[] ret = Array.Empty<string>();
+			int start = ReadInt32();
+			int end = ReadInt32();
+			int temp_offset = offset;
+			offset = start;
+			while (offset < end)
+			{
+				Array.Resize(ref ret, ret.Length + 1);
+				ret[^1] = ReadString();
+			}
+			offset = temp_offset;
+			return ret;
+		}
+
+
 	}
 }

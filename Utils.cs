@@ -175,5 +175,12 @@ namespace CharaReader
 			};
 			return ret;
 		}
+
+		public static bool TryGetField(this object obj, string name, out dynamic value)
+		{
+			FieldInfo info = obj.GetType().GetFields().FirstOrDefault(a => a.Name == name);
+			value = info?.GetValue(obj);
+			return info != null;
+		}
 	}
 }

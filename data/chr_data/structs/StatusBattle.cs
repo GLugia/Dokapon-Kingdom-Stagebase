@@ -1,14 +1,12 @@
 ﻿namespace CharaReader.data.chr_data.structs
 {
-	public struct Item
+	public struct StatusBattle
 	{
-		public byte item_id;
-		public byte type;
+		public short item_id;
 		public short icon_id;
-		public string name;
-		public int price;
-		public byte unk_00;
 		public byte unk_01;
+		public byte unk_02;
 		public short padding;
+		public string name;
 	}
 }
