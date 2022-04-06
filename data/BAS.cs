@@ -493,6 +493,8 @@ namespace CharaReader.data
 			writer.Write((length / 2) + 1);
 			writer.offset = temp;
 			writer.offset += last_file.Length;
+			writer.offset -= sizeof(int);
+			writer.WritePointer("bas_file_len_ptr");
 		}
 	}
 }
