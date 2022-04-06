@@ -314,7 +314,5 @@ namespace CharaReader.data
 			offset = temp_offset;
 			return ret;
 		}
-
-
 	}
 }

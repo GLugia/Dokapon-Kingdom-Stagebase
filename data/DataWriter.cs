@@ -25,7 +25,7 @@ namespace CharaReader.data
 
 		public void Close()
 		{
-			Array.Resize(ref _data, _data.Length + (_data.Length % 16));
+			Array.Resize(ref _data, _data.Length + (16 - (_data.Length % 16)));
 			File.WriteAllBytes(_file, _data);
 			_file = null;
 			offset = 0;
@@ -403,6 +403,17 @@ namespace CharaReader.data
 		public void ReservePointer(int id, string name, int count = 1)
 		{
 			Write(id);
+			reserved_offsets.Add(name, new Pointer
+			{
+				offset = offset,
+				index = 0,
+				count = count
+			});
+			offset += count * sizeof(int);
+		}
+
+		public void ReservePointerNoID(string name, int count = 1)
+		{
 			reserved_offsets.Add(name, new Pointer
 			{
 				offset = offset,

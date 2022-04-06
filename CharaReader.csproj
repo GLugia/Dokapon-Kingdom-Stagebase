@@ -16,14 +16,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Update="GAME/STAGEBASE.DAT">
+    <None Update="STAGEBASE.DAT">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-  </ItemGroup>
-
-  <ItemGroup>
-    <Folder Include="data\bas_data\" />
-    <Folder Include="data\generic_data\" />
   </ItemGroup>
 
 </Project>
