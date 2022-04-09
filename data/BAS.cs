@@ -1,5 +1,6 @@
 ﻿using CharaReader.data.bas_data;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace CharaReader.data
@@ -8,10 +9,12 @@ namespace CharaReader.data
 	{
 		public string base_data_start;
 		public string base_data_end;
+		public byte[][] descriptions;
+		public List<Action<byte[], int>> description_ptr_handlers;
 		public Stage[] stages;
 		public Unk_6E[] unk_6E;
 		public Location[] locations;
-		public string[] space_descriptions;
+		public Descriptions space_descriptions;
 		public Space[] spaces;
 		public Temple[] temples;
 		public Unk_68[] unk_68;
@@ -50,6 +53,8 @@ namespace CharaReader.data
 				reader.offset = end;
 			}
 
+			descriptions = Array.Empty<byte[]>();
+			description_ptr_handlers = new();
 			stages = Array.Empty<Stage>();
 			unk_85 = new byte[2][];
 			unk_AC = Array.Empty<Unk_AC>();
@@ -69,7 +74,20 @@ namespace CharaReader.data
 							reader.offset = end;
 							break;
 						}
-					case 0x03: reader.offset = reader.ReadInt32(); break;
+					case 0x03:
+						{
+							end = reader.ReadInt32(); // this is technically a long int value but the highest 8 bits are always 0
+							reader.ReadUInt32();
+							offset = reader.offset;
+							Array.Resize(ref descriptions, descriptions.Length + 1);
+							descriptions[^1] = reader.ReadBytes(end - reader.offset);
+							foreach (Action<byte[], int> action in description_ptr_handlers)
+							{
+								action.Invoke(descriptions[^1], offset);
+							}
+							description_ptr_handlers.Clear();
+							break;
+						}
 					case 0x05:
 						{
 							item_id = reader.ReadInt32();
@@ -90,7 +108,7 @@ namespace CharaReader.data
 						}
 					case 0x6E: unk_6E = reader.ReadStructs<Unk_6E>(table_id); break;
 					case 0x37: locations = reader.ReadStructs<Location>(table_id); break;
-					case 0x88: space_descriptions = reader.ReadDescriptions(); break;
+					case 0x88: space_descriptions = ReadDescriptions(reader); break;
 					case 0x87: spaces = reader.ReadStructs<Space>(table_id); break;
 					case 0x67: temples = reader.ReadStructs<Temple>(table_id); break;
 					case 0x68: unk_68 = reader.ReadStructs<Unk_68>(table_id); break;
@@ -275,6 +293,31 @@ namespace CharaReader.data
 			}
 		}
 
+		private Descriptions ReadDescriptions(DataReader reader, byte separator = 0, int alignment = sizeof(int))
+		{
+			Descriptions ret = new()
+			{
+				item_id = descriptions.Length,
+				ptrs = Array.Empty<int>()
+			};
+			int start_offset = reader.ReadInt32(); // these pointers aren't needed for our purposes. they are still written to file later on.
+			int end_offset = reader.ReadInt32();
+			description_ptr_handlers.Add((a, b) => Utils.SetPointers(a, b, ref ret.ptrs, start_offset, end_offset, separator, alignment));
+			return ret;
+		}
+
+		private Descriptions ReadDescriptions(DataReader reader, int end_value, byte separator = 0, int alignment = sizeof(int))
+		{
+			Descriptions ret = new()
+			{
+				item_id = descriptions.Length,
+				ptrs = Array.Empty<int>()
+			};
+			int start_offset = reader.ReadInt32();
+			description_ptr_handlers.Add((a, b) => Utils.SetPointers2(a, b, ref ret.ptrs, start_offset, end_value, separator, alignment));
+			return ret;
+		}
+
 		public void Write(DataWriter writer)
 		{
 			writer.ReservePointer(0x53414240, "bas_file_len_ptr");
@@ -304,7 +347,7 @@ namespace CharaReader.data
 			writer.ReservePointer(0x03, "des_end_ptr");
 			writer.Write(0);
 			writer.WritePointer("des_ptr");
-			writer.WriteDescriptions(space_descriptions);
+			writer.WriteDescriptions(descriptions[space_descriptions.item_id], space_descriptions.ptrs);
 			writer.WritePointer("des_ptr");
 			writer.WritePointer("des_end_ptr");
 			writer.WriteStructs(0x2B, unk_2B);

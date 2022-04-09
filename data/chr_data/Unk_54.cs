@@ -2,7 +2,7 @@
 {
 	public struct Unk_54
 	{
-		public short unk_00;
-		public short unk_01;
+		public short item_id;
+		public short value; // always 0x0100
 	}
 }

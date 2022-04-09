@@ -2,6 +2,7 @@
 {
 	public struct NPCEnemyDropTable
 	{
+		public byte item_id;
 		public byte chance_for_a;
 		public byte chance_for_b;
 		public byte padding;

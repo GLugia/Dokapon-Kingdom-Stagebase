@@ -25,7 +25,10 @@ namespace CharaReader.data
 
 		public void Close()
 		{
-			Array.Resize(ref _data, _data.Length + (16 - (_data.Length % 16)));
+			if (_data.Length % 16 != 0)
+			{
+				Array.Resize(ref _data, _data.Length + (16 - (_data.Length % 16)));
+			}
 			File.WriteAllBytes(_file, _data);
 			_file = null;
 			offset = 0;
@@ -34,7 +37,7 @@ namespace CharaReader.data
 			_data = null;
 		}
 
-		public void Write(object val)
+		public void Write(object val, int alignment = sizeof(int))
 		{
 			switch (val)
 			{
@@ -59,7 +62,7 @@ namespace CharaReader.data
 					}
 				case string:
 					{
-						Write((string)val);
+						Write((string)val, alignment);
 						break;
 					}
 				case sbyte:
@@ -149,7 +152,7 @@ namespace CharaReader.data
 			offset += val.Length;
 		}
 
-		public void Write(string val)
+		public void Write(string val, int alignment = sizeof(int))
 		{
 			byte[] data = Program.shift_jis.GetBytes(val);
 			if (offset + data.Length > _data.Length - 1)
@@ -157,7 +160,7 @@ namespace CharaReader.data
 				Array.Resize(ref _data, offset + data.Length);
 			}
 			data.CopyTo(_data, offset);
-			offset += data.Length + (offset % 4);
+			offset += data.Length + (offset % alignment);
 		}
 
 		public void Write(sbyte val)
@@ -187,6 +190,16 @@ namespace CharaReader.data
 				Array.Resize(ref _data, offset + val.Length + 1);
 			}
 			val.CopyTo(_data, offset);
+			offset += val.Length;
+		}
+
+		public void Write<T>(Span<T> val)
+		{
+			if (offset + val.Length > _data.Length - 1)
+			{
+				Array.Resize(ref _data, offset + val.Length + 1);
+			}
+			val.ToArray().CopyTo(_data, offset);
 			offset += val.Length;
 		}
 
@@ -372,32 +385,28 @@ namespace CharaReader.data
 			}
 		}
 
-		public void WriteDescriptions(object obj)
+		public void WriteDescriptions(byte[] data, int[] ptrs, int alignment = sizeof(int))
 		{
-			switch (obj)
+			if (offset + data.Length - 1 > _data.Length - 1)
 			{
-				case null:
-					{
-						break;
-					}
-				case Array arr:
-					{
-						foreach (object val in arr)
-						{
-							if (val == null)
-							{
-								continue;
-							}
-							WriteDescriptions(val);
-						}
-						break;
-					}
-				default:
-					{
-						Write(obj);
-						break;
-					}
+				Array.Resize(ref _data, offset + data.Length + 1);
 			}
+			for (int i = 0; i < ptrs.Length - 1; i++)
+			{
+				for (int ptr = ptrs[i]; ptr < ptrs[i + 1]; ptr++)
+				{
+					Write(data[ptr]);
+				}
+			}
+			for (int ptr = ptrs[^1]; ptr < data.Length - 1; ptr++)
+			{
+				if (data[ptr] == 0)
+				{
+					break;
+				}
+				Write(data[ptr]);
+			}
+			offset += sizeof(int) - (offset % sizeof(int));
 		}
 
 		public void ReservePointer(int id, string name, int count = 1)

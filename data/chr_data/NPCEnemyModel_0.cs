@@ -2,8 +2,9 @@
 {
 	public struct NPCEnemyModel_0
 	{
+		public int item_id;
 		public string f0;
 		public string fg0;
-		public short[][] data;
+		public ushort[][] data;
 	}
 }

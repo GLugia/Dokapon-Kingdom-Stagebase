@@ -2,6 +2,7 @@
 {
 	public struct Unk_52
 	{
-		public string nums;
+		public int item_id;
+		public string value;
 	}
 }

@@ -9,12 +9,15 @@ namespace CharaReader
 	internal unsafe class Program
 	{
 		public static Encoding shift_jis { get; private set; }
+		static int real_size;
+		static int decompiled_size;
 
 		private static void Main(string[] _)
 		{
 			var encodings = CodePagesEncodingProvider.Instance.GetEncodings().Select(a => a.DisplayName).ToArray();
 			shift_jis = CodePagesEncodingProvider.Instance.GetEncoding("shift-jis");
 
+			
 			if (!SplitStagebase())
 			{
 				Console.Out.WriteLine($"Failed to split STAGEBASE.DAT");
@@ -33,10 +36,14 @@ namespace CharaReader
 				return;
 			}
 
+			
 			if (!CombineStagebase())
 			{
 				Console.Out.WriteLine($"Failed to combine STAGEBASE_NEW.DAT");
+				return;
 			}
+
+			Console.Out.WriteLine($"Completion rate: {Math.Round(((double)decompiled_size / (double)real_size) * 100, 2)}%");
 		}
 
 		private static bool ReadBAS()
@@ -144,6 +151,7 @@ namespace CharaReader
 			try
 			{
 				Stream stream = File.OpenRead(sb);
+				real_size = (int)stream.Length;
 				long origin;
 				string name;
 				int length;
@@ -198,13 +206,14 @@ namespace CharaReader
 			{
 				byte[] bas_data = File.ReadAllBytes(bas);
 				byte[] chr_data = File.ReadAllBytes(chr);
+				decompiled_size = bas_data.Length + chr_data.Length;
 				Stream stream = File.Create("STAGEBASE_NEW.DAT");
 				stream.Write(bas_data);
 				stream.Write(chr_data);
 				stream.Flush();
 				stream.Close();
-				File.Delete(bas);
-				File.Delete(chr);
+				//File.Delete(bas);
+				//File.Delete(chr);
 				return true;
 			}
 			catch (Exception e)

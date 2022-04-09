@@ -2,6 +2,7 @@
 {
 	public struct NPCEnemy
 	{
+		public byte item_id;
 		public byte unk_00;
 		public short level;
 		public string name;

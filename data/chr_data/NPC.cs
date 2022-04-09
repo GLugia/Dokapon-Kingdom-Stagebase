@@ -1,7 +1,8 @@
 ﻿namespace CharaReader.data.chr_data
 {
-	public struct Unk_55
+	public struct NPC
 	{
+		public int item_id;
 		public string name;
 	}
 }

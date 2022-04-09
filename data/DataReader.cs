@@ -46,7 +46,7 @@ namespace CharaReader.data
 			return ret.ToCharArray();
 		}
 
-		public string ReadString()
+		public string ReadString(int alignment = sizeof(int))
 		{
 			byte[] val = Array.Empty<byte>();
 			while (val.Length < 256 && offset < _data.Length)
@@ -55,9 +55,9 @@ namespace CharaReader.data
 				{
 					break;
 				}
-				Array.Resize(ref val, val.Length + sizeof(int));
-				_data[offset..(offset + sizeof(int))].CopyTo(val, val.Length - sizeof(int));
-				offset += sizeof(int);
+				Array.Resize(ref val, val.Length + alignment);
+				_data[offset..(offset + alignment)].CopyTo(val, val.Length - alignment);
+				offset += alignment;
 			}
 			return Program.shift_jis.GetString(val);
 		}
@@ -129,6 +129,13 @@ namespace CharaReader.data
 		{
 			float ret = BitConverter.ToSingle(_data.AsSpan()[offset..(offset + sizeof(float))]);
 			offset += sizeof(float);
+			return ret;
+		}
+
+		public double ReadDouble()
+		{
+			double ret = BitConverter.ToSingle(_data.AsSpan()[offset..(offset + sizeof(double))]);
+			offset += sizeof(double);
 			return ret;
 		}
 
@@ -296,22 +303,6 @@ namespace CharaReader.data
 						}
 				}
 			}
-			return ret;
-		}
-
-		public string[] ReadDescriptions()
-		{
-			string[] ret = Array.Empty<string>();
-			int start = ReadInt32();
-			int end = ReadInt32();
-			int temp_offset = offset;
-			offset = start;
-			while (offset < end)
-			{
-				Array.Resize(ref ret, ret.Length + 1);
-				ret[^1] = ReadString();
-			}
-			offset = temp_offset;
 			return ret;
 		}
 	}

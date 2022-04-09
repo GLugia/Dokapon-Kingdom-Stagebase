@@ -182,5 +182,164 @@ namespace CharaReader
 			value = info?.GetValue(obj);
 			return info != null;
 		}
+
+		public static string ReadString(this byte[] data, int offset, byte separator = 0)
+		{
+			int end;
+			for (end = offset; end < data.Length - 1; end++)
+			{
+				if (data[end] == separator)
+				{
+					break;
+				}
+			}
+			return Program.shift_jis.GetString(data.AsSpan()[offset..end]);
+		}
+
+		public static void SetPointers2(this byte[] data, int origin_offset, ref int[] ref_ptrs, int start_offset, int end_value, byte separator = 0, int alignment = sizeof(int))
+		{
+			ref_ptrs = Array.Empty<int>();
+			int offset = start_offset - origin_offset;
+			int temp;
+			int length = (data.Length - 1) - sizeof(int);
+			do
+			{
+				temp = BitConverter.ToInt32(data.AsSpan()[offset..(offset + sizeof(int))]);
+				offset++;
+			}
+			while (offset < length && temp != end_value);
+			SetPointers(data, origin_offset, ref ref_ptrs, start_offset, offset + origin_offset, separator, alignment);
+		}
+
+		public static void SetPointers(this byte[] data, int origin_offset, ref int[] ref_ptrs, int start_offset, int end_offset, byte separator = 0, int alignment = sizeof(int))
+		{
+			ref_ptrs = Array.Empty<int>();
+			int offset = start_offset - origin_offset;
+			int end = end_offset - origin_offset;
+			while (offset < end)
+			{
+				Array.Resize(ref ref_ptrs, ref_ptrs.Length + 1);
+				ref_ptrs[^1] = offset;
+				while (offset < end)
+				{
+					if (data[offset] == separator)
+					{
+						break;
+					}
+					offset++;
+				}
+				offset += alignment - (offset % alignment);
+			}
+		}
+
+		public static Array ConvertTo(byte[] data, dynamic type)
+		{
+			Array ret;
+			switch (type)
+			{
+				case null: return null;
+				case bool:
+					{
+						ret = Array.CreateInstance(typeof(bool), data.Length / sizeof(bool));
+						for (int i = 0; i < data.Length - sizeof(bool); i += sizeof(bool))
+						{
+							ret.SetValue(BitConverter.ToBoolean(data.AsSpan()[i..(i + sizeof(bool))]), i / sizeof(bool));
+						}
+						return ret;
+					}
+				case char:
+					{
+						ret = Array.CreateInstance(typeof(char), data.Length / sizeof(char));
+						for (int i = 0; i < data.Length - sizeof(char); i += sizeof(char))
+						{
+							ret.SetValue(Program.shift_jis.GetString(data.AsSpan()[i..(i + sizeof(char))])[0], i / sizeof(char));
+						}
+						return ret;
+					}
+				case byte: return data;
+				case sbyte:
+					{
+						ret = Array.CreateInstance(typeof(sbyte), data.Length / sizeof(sbyte));
+						for (int i = 0; i < data.Length - sizeof(sbyte); i += sizeof(sbyte))
+						{
+							ret.SetValue((sbyte)data[i], i / sizeof(sbyte));
+						}
+						return ret;
+					}
+				case ushort:
+					{
+						ret = Array.CreateInstance(typeof(ushort), data.Length / sizeof(ushort));
+						for (int i = 0; i < data.Length - sizeof(ushort); i += sizeof(ushort))
+						{
+							ret.SetValue(BitConverter.ToUInt16(data.AsSpan()[i..(i + sizeof(ushort))]), i / sizeof(ushort));
+						}
+						return ret;
+					}
+				case short:
+					{
+						ret = Array.CreateInstance(typeof(short), data.Length / sizeof(short));
+						for (int i = 0; i < data.Length - sizeof(short); i += sizeof(short))
+						{
+							ret.SetValue(BitConverter.ToInt16(data.AsSpan()[i..(i + sizeof(short))]), i / sizeof(short));
+						}
+						return ret;
+					}
+				case uint:
+					{
+						ret = Array.CreateInstance(typeof(uint), data.Length / sizeof(uint));
+						for (int i = 0; i < data.Length - sizeof(uint); i += sizeof(uint))
+						{
+							ret.SetValue(BitConverter.ToUInt32(data.AsSpan()[i..(i + sizeof(uint))]), i / sizeof(uint));
+						}
+						return ret;
+					}
+				case int:
+					{
+						ret = Array.CreateInstance(typeof(int), data.Length / sizeof(int));
+						for (int i = 0; i < data.Length - sizeof(int); i += sizeof(int))
+						{
+							ret.SetValue(BitConverter.ToInt32(data.AsSpan()[i..(i + sizeof(int))]), i / sizeof(int));
+						}
+						return ret;
+					}
+				case ulong:
+					{
+						ret = Array.CreateInstance(typeof(ulong), data.Length / sizeof(ulong));
+						for (int i = 0; i < data.Length - sizeof(ulong); i += sizeof(ulong))
+						{
+							ret.SetValue(BitConverter.ToUInt64(data.AsSpan()[i..(i + sizeof(ulong))]), i / sizeof(ulong));
+						}
+						return ret;
+					}
+				case long:
+					{
+						ret = Array.CreateInstance(typeof(long), data.Length / sizeof(long));
+						for (int i = 0; i < data.Length - sizeof(long); i += sizeof(long))
+						{
+							ret.SetValue(BitConverter.ToInt64(data.AsSpan()[i..(i + sizeof(long))]), i / sizeof(long));
+						}
+						return ret;
+					}
+				case float:
+					{
+						ret = Array.CreateInstance(typeof(float), data.Length / sizeof(float));
+						for (int i = 0; i < data.Length - sizeof(float); i += sizeof(float))
+						{
+							ret.SetValue(BitConverter.ToSingle(data.AsSpan()[i..(i + sizeof(float))]), i / sizeof(float));
+						}
+						return ret;
+					}
+				case double:
+					{
+						ret = Array.CreateInstance(typeof(double), data.Length / sizeof(double));
+						for (int i = 0; i < data.Length - sizeof(double); i += sizeof(double))
+						{
+							ret.SetValue(BitConverter.ToDouble(data.AsSpan()[i..(i + sizeof(double))]), i / sizeof(double));
+						}
+						return ret;
+					}
+				default: throw new Exception($"Unhandled type: {type.GetType().Name}");
+			}
+		}
 	}
 }
