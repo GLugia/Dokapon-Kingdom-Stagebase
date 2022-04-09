@@ -198,22 +198,22 @@ namespace CharaReader
 
 		public static void SetPointers2(this byte[] data, int origin_offset, ref int[] ref_ptrs, int start_offset, int end_value, byte separator = 0, int alignment = sizeof(int))
 		{
-			ref_ptrs = Array.Empty<int>();
 			int offset = start_offset - origin_offset;
 			int temp;
-			int length = (data.Length - 1) - sizeof(int);
-			do
+			while ((temp = BitConverter.ToInt32(data.AsSpan()[offset..(offset + sizeof(int))])) != end_value)
 			{
-				temp = BitConverter.ToInt32(data.AsSpan()[offset..(offset + sizeof(int))]);
-				offset++;
+				offset += alignment;
+				if (offset == data.Length - sizeof(int))
+				{
+					offset += sizeof(int);
+					break;
+				}
 			}
-			while (offset < length && temp != end_value);
 			SetPointers(data, origin_offset, ref ref_ptrs, start_offset, offset + origin_offset, separator, alignment);
 		}
 
 		public static void SetPointers(this byte[] data, int origin_offset, ref int[] ref_ptrs, int start_offset, int end_offset, byte separator = 0, int alignment = sizeof(int))
 		{
-			ref_ptrs = Array.Empty<int>();
 			int offset = start_offset - origin_offset;
 			int end = end_offset - origin_offset;
 			while (offset < end)

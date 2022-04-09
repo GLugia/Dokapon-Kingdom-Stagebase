@@ -5,6 +5,6 @@
 		public int item_id;
 		public string f0;
 		public string fg0;
-		public ushort[][] data;
+		public Descriptions description;
 	}
 }

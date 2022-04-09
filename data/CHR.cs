@@ -158,23 +158,23 @@ namespace CharaReader.data
 							description_ptr_handlers.Clear();
 							break;
 						}
-					case 0x5A: weapon_descriptions = ReadDescriptions(reader); break;
-					case 0x63: weapon_bonus_descriptions = ReadDescriptions(reader); break;
+					case 0x5A: weapon_descriptions = ReadDescriptions(reader.ReadInt32(), reader.ReadInt32()); break;
+					case 0x63: weapon_bonus_descriptions = ReadDescriptions(reader.ReadInt32(), reader.ReadInt32()); break;
 					case 0x58: weapons = reader.ReadStructs<Weapon>(table_id); break;
 					case 0x59: weapon_models = reader.ReadStructs<WeaponModel>(table_id); break;
 
-					case 0x60: shield_descriptions = ReadDescriptions(reader); break;
+					case 0x60: shield_descriptions = ReadDescriptions(reader.ReadInt32(), reader.ReadInt32()); break;
 					case 0x5E: shields = reader.ReadStructs<Shield>(table_id); break;
 					case 0x5F: shield_models = reader.ReadStructs<ShieldModel>(table_id); break;
 
-					case 0x65: accessory_descriptions = ReadDescriptions(reader); break;
+					case 0x65: accessory_descriptions = ReadDescriptions(reader.ReadInt32(), reader.ReadInt32()); break;
 					case 0x64: accessories = reader.ReadStructs<Accessory>(table_id); break;
 
-					case 0x95: hair_descriptions = ReadDescriptions(reader); break;
+					case 0x95: hair_descriptions = ReadDescriptions(reader.ReadInt32(), reader.ReadInt32()); break;
 					case 0x96: hair = reader.ReadStructs<Hair>(table_id); break;
 					case 0x97: hair_models = reader.ReadStructs<HairModel>(table_id); break;
 
-					case 0x6A: item_descriptions = ReadDescriptions(reader); break;
+					case 0x6A: item_descriptions = ReadDescriptions(reader.ReadInt32(), reader.ReadInt32()); break;
 					case 0x89: item_types = reader.ReadStructs<ItemType>(table_id); break;
 					case 0x69: items = reader.ReadStructs<Item>(table_id); break;
 					case 0x6C: item_gifts = reader.ReadStructs<ItemGift>(table_id); break;
@@ -182,13 +182,13 @@ namespace CharaReader.data
 					case 0xD0: item_data_d0 = reader.ReadStructs<ItemUnk_D0>(table_id); break;
 					case 0x6B: item_funcs = reader.ReadStructs<ItemFunc>(table_id); break;
 
-					case 0x71: magic_off_descriptions = ReadDescriptions(reader); break;
+					case 0x71: magic_off_descriptions = ReadDescriptions(reader.ReadInt32(), reader.ReadInt32()); break;
 					case 0x8A: magic_base = reader.ReadStructs<MagicType>(table_id); break;
 					case 0x8B: magic_elements = reader.ReadStructs<MagicType>(table_id); break;
 					case 0x70: magic_off = reader.ReadStructs<Magic>(table_id); break;
-					case 0x73: magic_def_descriptions = ReadDescriptions(reader); break;
+					case 0x73: magic_def_descriptions = ReadDescriptions(reader.ReadInt32(), reader.ReadInt32()); break;
 					case 0x72: magic_def = reader.ReadStructs<Magic>(table_id); break;
-					case 0x75: magic_item_descriptions = ReadDescriptions(reader); break;
+					case 0x75: magic_item_descriptions = ReadDescriptions(reader.ReadInt32(), reader.ReadInt32()); break;
 					case 0x74: magic_items = reader.ReadStructs<MagicItem>(table_id); break;
 					case 0x9F: magic_unk_9f = reader.ReadInt32(); break;
 					case 0xD1: magic_unk_d1 = reader.ReadStructs<MagicUnk_D1>(table_id); break;
@@ -208,14 +208,14 @@ namespace CharaReader.data
 							reader.offset = end;
 							break;
 						}
-					case 0xD8: ability_darkling_descriptions = ReadDescriptions(reader); break;
+					case 0xD8: ability_darkling_descriptions = ReadDescriptions(reader.ReadInt32(), reader.ReadInt32()); break;
 					case 0xD9: ability_darkling = reader.ReadStructs<Ability>(table_id); break;
-					case 0x7E: ability_field_descriptions = ReadDescriptions(reader); break;
+					case 0x7E: ability_field_descriptions = ReadDescriptions(reader.ReadInt32(), reader.ReadInt32()); break;
 					case 0x7B: ability_field = reader.ReadStructs<Ability>(table_id); break;
-					case 0x7D: ability_battle_descriptions = ReadDescriptions(reader); break;
+					case 0x7D: ability_battle_descriptions = ReadDescriptions(reader.ReadInt32(), reader.ReadInt32()); break;
 					case 0x7A: ability_battle = reader.ReadStructs<Ability>(table_id); break;
 
-					case 0x3D: job_descriptions = ReadDescriptions(reader); break;
+					case 0x3D: job_descriptions = ReadDescriptions(reader.ReadInt32(), reader.ReadInt32()); break;
 					case 0x42: jobs = reader.ReadStructs<Job>(table_id); break;
 					case 0x3C: job_skills = reader.ReadStructs2<JobSkills>(table_id); break;
 					case 0x40: job_stats = reader.ReadStructs2<JobStats>(table_id); break;
@@ -347,12 +347,12 @@ namespace CharaReader.data
 						{
 							Array.Resize(ref npc_names, npc_names.Length + 1);
 							reader.ReadInt32();
-							npc_names[^1] = ReadDescriptions(reader, 0, 0, sizeof(short));
+							npc_names[^1] = ReadDescriptions2(reader.ReadInt32(), 0, 0, sizeof(short), null);
 							break;
 						}
 					case 0x17: unk_17 = reader.ReadStructs<Unk_17>(table_id); break;
 
-					case 0x7C: npc_enemy_descriptions = ReadDescriptions(reader); break;
+					case 0x7C: npc_enemy_descriptions = ReadDescriptions(reader.ReadInt32(), reader.ReadInt32()); break;
 					case 0x50: npc_enemies = reader.ReadStructs<NPCEnemy>(table_id); break;
 					case 0x53: npc_enemy_drop_tables = reader.ReadStructs<NPCEnemyDropTable>(table_id); break;
 					case 0x51: npc_enemy_models = reader.ReadStructs<NPCEnemyModel>(table_id); break;
@@ -366,27 +366,8 @@ namespace CharaReader.data
 							npc_enemy_models_0[item_id].item_id = item_id;
 							npc_enemy_models_0[item_id].f0 = reader.ReadString();
 							npc_enemy_models_0[item_id].fg0 = reader.ReadString();
-							npc_enemy_models_0[item_id].data = Array.Empty<ushort[]>();
-							while (reader.ReadInt32() == 1)
-							{
-								temp = reader.ReadInt32();
-								if (temp > npc_enemy_models_0[item_id].data.Length - 1)
-								{
-									Array.Resize(ref npc_enemy_models_0[item_id].data, temp + 1);
-									npc_enemy_models_0[item_id].data[temp] = Array.Empty<ushort>();
-								}
-								offset2 = reader.ReadInt32();
-								offset = reader.offset;
-								reader.offset = offset2;
-								do
-								{
-									Array.Resize(ref npc_enemy_models_0[item_id].data[temp], npc_enemy_models_0[item_id].data[temp].Length + 1);
-									npc_enemy_models_0[item_id].data[temp][^1] = reader.ReadUInt16();
-								}
-								while (npc_enemy_models_0[item_id].data[temp][^1] != 0xFFFF);
-								reader.ReadInt16(); // always 0x0000
-								reader.offset = offset;
-							}
+							npc_enemy_models_0[item_id].description = ReadDescriptions3(reader, 0xFFFF, 1, sizeof(int),
+								npc_enemy_models_0[item_id].description?.item_id ?? null);
 							break;
 						}
 					case 0x5B: unk_5B = reader.ReadStructs<Unk_5B>(table_id); break;
@@ -408,60 +389,30 @@ namespace CharaReader.data
 							npc_models_0[item_id].f0 = reader.ReadString();
 							npc_models_0[item_id].k0 = reader.ReadString();
 							npc_models_0[item_id].fg0 = reader.ReadString();
-							npc_models_0[item_id].unk_00 = Array.Empty<ushort[]>();
-							npc_models_0[item_id].unk_01 = Array.Empty<ushort[]>();
-							List<int> offsets = new();
-							while (reader.ReadInt32() == 1)
+							npc_models_0[item_id].unk_00 = Array.Empty<Descriptions>();
+							npc_models_0[item_id].unk_01 = Array.Empty<Descriptions>();
+							while (reader.ReadInt32() != 0)
 							{
-								reader.ReadInt32(); // unnecessary id
-								offset2 = reader.ReadInt32();
-								if (offsets.Contains(offset2))
+								gender_id = reader.ReadInt32();
+								if (gender_id > npc_models_0[item_id].unk_00.Length - 1)
 								{
-									continue;
+									Array.Resize(ref npc_models_0[item_id].unk_00, gender_id + 1);
 								}
-								offsets.Add(offset2);
+								int ptr = reader.ReadInt32();
+								npc_models_0[item_id].unk_00[gender_id] = ReadDescriptions2(ptr, 0xFFFF, 1, sizeof(int),
+									npc_models_0[item_id].unk_00.Length > 0 ? npc_models_0[item_id].unk_00[0]?.item_id ?? null : null);
 							}
-							offsets.Sort();
-							offset = reader.offset;
-							foreach (int temp_offset in offsets)
+							while (reader.ReadInt32() != 0)
 							{
-								Array.Resize(ref npc_models_0[item_id].unk_00, npc_models_0[item_id].unk_00.Length + 1);
-								npc_models_0[item_id].unk_00[^1] = Array.Empty<ushort>();
-								reader.offset = temp_offset;
-								do
+								gender_id = reader.ReadInt32();
+								if (gender_id > npc_models_0[item_id].unk_01.Length - 1)
 								{
-									Array.Resize(ref npc_models_0[item_id].unk_00[^1], npc_models_0[item_id].unk_00[^1].Length + 1);
-									npc_models_0[item_id].unk_00[^1][^1] = reader.ReadUInt16();
+									Array.Resize(ref npc_models_0[item_id].unk_01, gender_id + 1);
 								}
-								while (npc_models_0[item_id].unk_00[^1][^1] != 0xFFFF);
+								int ptr = reader.ReadInt32();
+								npc_models_0[item_id].unk_01[gender_id] = ReadDescriptions2(ptr, 0xFFFF, 1, sizeof(int),
+									npc_models_0[item_id].unk_01.Length > 0 ? npc_models_0[item_id].unk_01[0]?.item_id ?? null : null);
 							}
-							reader.offset = offset;
-							offsets.Clear();
-							while (reader.ReadInt32() == 1)
-							{
-								reader.ReadInt32(); // unnecessary id
-								offset2 = reader.ReadInt32();
-								if (offsets.Contains(offset2))
-								{
-									continue;
-								}
-								offsets.Add(offset2);
-							}
-							offset = reader.offset;
-							offsets.Sort();
-							foreach (int temp_offset in offsets)
-							{
-								Array.Resize(ref npc_models_0[item_id].unk_01, npc_models_0[item_id].unk_01.Length + 1);
-								npc_models_0[item_id].unk_01[^1] = Array.Empty<ushort>();
-								reader.offset = temp_offset;
-								do
-								{
-									Array.Resize(ref npc_models_0[item_id].unk_01[^1], npc_models_0[item_id].unk_01[^1].Length + 1);
-									npc_models_0[item_id].unk_01[^1][^1] = reader.ReadUInt16();
-								}
-								while (npc_models_0[item_id].unk_01[^1][^1] != 0xFFFF);
-							}
-							reader.offset = offset;
 							break;
 						}
 					case 0x5D: unk_5D = reader.ReadStructs<Unk_5D>(table_id); break;
@@ -477,28 +428,44 @@ namespace CharaReader.data
 			}
 		}
 
-		private Descriptions ReadDescriptions(DataReader reader, byte separator = 0, int alignment = sizeof(int))
+		private Descriptions ReadDescriptions(int start_offset, int end_offset, byte separator = 0, int alignment = sizeof(int), int? custom_id = null)
 		{
 			Descriptions ret = new()
 			{
-				item_id = descriptions.Length,
+				item_id = custom_id ?? descriptions.Length,
 				ptrs = Array.Empty<int>()
 			};
-			int start_offset = reader.ReadInt32(); // these pointers aren't needed for our purposes. they are still written to file later on.
-			int end_offset = reader.ReadInt32();
 			description_ptr_handlers.Add((a, b) => Utils.SetPointers(a, b, ref ret.ptrs, start_offset, end_offset, separator, alignment));
 			return ret;
 		}
 
-		private Descriptions ReadDescriptions(DataReader reader, int end_value, byte separator = 0, int alignment = sizeof(int))
+		private Descriptions ReadDescriptions2(int start_offset, int end_value, byte separator = 0, int alignment = sizeof(int), int? custom_id = null)
 		{
 			Descriptions ret = new()
 			{
-				item_id = descriptions.Length,
+				item_id = custom_id ?? descriptions.Length,
 				ptrs = Array.Empty<int>()
 			};
-			int start_offset = reader.ReadInt32();
 			description_ptr_handlers.Add((a, b) => Utils.SetPointers2(a, b, ref ret.ptrs, start_offset, end_value, separator, alignment));
+			return ret;
+		}
+
+		private Descriptions ReadDescriptions3(DataReader reader, int end_value, byte separator = 0, int alignment = sizeof(int), int? custom_id = null)
+		{
+			Descriptions ret = new()
+			{
+				item_id = custom_id ?? descriptions.Length,
+				ptrs = Array.Empty<int>()
+			};
+			while (reader.ReadInt32() != 0)
+			{
+				reader.ReadInt32();
+				int start_offset = reader.ReadInt32();
+				description_ptr_handlers.Add((a, b) =>
+				{
+					Utils.SetPointers2(a, b, ref ret.ptrs, start_offset, end_value, separator, alignment);
+				});
+			}
 			return ret;
 		}
 
@@ -716,14 +683,16 @@ namespace CharaReader.data
 			writer.ReservePointer(0x03, "des_ptr");
 			writer.Write(0);
 			writer.WritePointerID("male_name_ptr", 0);
-			writer.WriteDescriptions(descriptions[npc_names[0].item_id], npc_names[0].ptrs, 2);
-			writer.offset += sizeof(int) - (writer.offset % sizeof(int));
+			writer.WriteDescriptions(descriptions[npc_names[0].item_id], npc_names[0].ptrs);
+			writer.Write(0);
 			writer.WritePointerID("female_name_ptr", 1);
-			writer.WriteDescriptions(descriptions[npc_names[1].item_id], npc_names[1].ptrs, 2);
+			writer.WriteDescriptions(descriptions[npc_names[1].item_id], npc_names[1].ptrs);
 			writer.WritePointer("des_ptr");
 
 			writer.WriteStructs(0x17, unk_17);
-			writer.ReservePointer(0x7C, "npc_des_ptr", 2);
+			writer.Write(0x7C);
+			writer.ReservePointerNoID($"npc_enemy_data_{npc_enemy_descriptions.ptrs[0]}");
+			writer.ReservePointerNoID($"npc_enemy_data_end");
 			writer.WriteStructs(0x50, npc_enemies);
 			writer.WriteStructs(0x53, npc_enemy_drop_tables);
 			writer.WriteStructs(0x51, npc_enemy_models);
@@ -737,11 +706,11 @@ namespace CharaReader.data
 				writer.Write(npc_enemy_models_0[i].item_id);
 				writer.Write(npc_enemy_models_0[i].f0);
 				writer.Write(npc_enemy_models_0[i].fg0);
-				for (int j = 0; j < npc_enemy_models_0[i].data.Length; j++)
+				for (int j = 0; j < npc_enemy_models_0[i].description.ptrs.Length; j++)
 				{
 					writer.Write(1);
 					writer.Write(j);
-					writer.ReservePointerNoID($"npc_enemy_model_data_ptr_{i}_{j}");
+					writer.ReservePointerNoID($"npc_enemy_data_{i}_{npc_enemy_models_0[i].description.ptrs[j]}");
 				}
 				writer.Write(0);
 			}
@@ -752,26 +721,9 @@ namespace CharaReader.data
 
 			writer.ReservePointer(0x03, "des_end_ptr");
 			writer.Write(0);
-			for (int i = 0; i < npc_enemy_models_0.Length; i++)
-			{
-				if (string.IsNullOrEmpty(npc_enemy_models_0[i].f0))
-				{
-					continue;
-				}
-				for (int j = 0; j < npc_enemy_models_0[i].data.Length; j++)
-				{
-					writer.WritePointer($"npc_enemy_model_data_ptr_{i}_{j}");
-					for (int k = 0; k < npc_enemy_models_0[i].data[j].Length; k++)
-					{
-						writer.Write(npc_enemy_models_0[i].data[j][k]);
-					}
-					writer.Write((short)0);
-				}
-			}
-			writer.WritePointer("npc_des_ptr");
-			writer.WriteDescriptions(descriptions[npc_enemy_descriptions.item_id], npc_enemy_descriptions.ptrs);
-			writer.WritePointer("npc_des_ptr");
-			writer.WritePointer("des_end_ptr");
+			writer.WriteDescriptions($"npc_enemy_data", descriptions[npc_enemy_models_0[0].description.item_id]);
+			//writer.WriteDescriptions(descriptions[npc_enemy_descriptions.item_id], npc_enemy_descriptions.ptrs);
+			writer.WritePointer("des_end_ptr");/*
 
 			/*
 			 * 0x55 npcs
@@ -780,7 +732,7 @@ namespace CharaReader.data
 			 * 0x5D unk_5D
 			 * 0x2A unk_2A
 			 * 0x03?
-			 */
+			 *//*
 			writer.WriteStructs(0x55, npcs);
 			writer.WriteStructs(0x56, npc_models);
 			for (int i = 0; i < npc_models_0.Length; i++)
@@ -794,18 +746,18 @@ namespace CharaReader.data
 				writer.Write(npc_models_0[i].f0);
 				writer.Write(npc_models_0[i].k0);
 				writer.Write(npc_models_0[i].fg0);
-				for (int j = 0; j < npc_models_0[i].unk_00.Length; j++)
+				for (int j = 0; j < npc_models_0[i].unk_00.ptrs.Length; j++)
 				{
 					writer.Write(1);
 					writer.Write(j);
-					writer.ReservePointerNoID($"npc_model_0_ptr_{i}_{j}");
+					writer.ReservePointerNoID($"npc_model_0_ptr_{npc_models_0[i].unk_00.ptrs[j]}");
 				}
 				writer.Write(0);
-				for (int j = 0; j < npc_models_0[i].unk_01.Length; j++)
+				for (int j = 0; j < npc_models_0[i].unk_01.ptrs.Length; j++)
 				{
 					writer.Write(1);
 					writer.Write(j);
-					writer.ReservePointerNoID($"npc_model_1_ptr_{i}_{j}");
+					writer.ReservePointerNoID($"npc_model_1_ptr_{npc_models_0[i].unk_01.ptrs[j]}");
 				}
 				writer.Write(0);
 			}
@@ -819,31 +771,15 @@ namespace CharaReader.data
 			 *  should list the offset of this array instead and corrected
 			 *  to a real offset when written to file.
 			 *  most other 0x03 objects should do the same if this is the case.
-			 */
+			 *//*
 			for (int i = 0; i < npc_models_0.Length; i++)
 			{
 				if (npc_models_0[i].f0 == null)
 				{
 					continue;
 				}
-				for (int j = 0; j < npc_models_0[i].unk_00.Length; j++)
-				{
-					writer.WritePointer($"npc_model_0_ptr_{i}_{j}");
-					for (int k = 0; k < npc_models_0[i].unk_00[j].Length; k++)
-					{
-						writer.Write(npc_models_0[i].unk_00[j][k]);
-					}
-					writer.Write((short)0);
-				}
-				for (int j = 0; j < npc_models_0[i].unk_01.Length; j++)
-				{
-					writer.WritePointer($"npc_model_1_ptr_{i}_{j}");
-					for (int k = 0; k < npc_models_0[i].unk_01[j].Length; k++)
-					{
-						writer.Write(npc_models_0[i].unk_01[j][k]);
-					}
-					writer.Write((short)0);
-				}
+				writer.WriteDescriptions(descriptions[npc_models_0[i].unk_00.item_id], npc_models_0[i].unk_00.ptrs, $"npc_model_0_ptr", (short)0);
+				writer.WriteDescriptions(descriptions[npc_models_0[i].unk_00.item_id], npc_models_0[i].unk_01.ptrs, $"npc_model_1_ptr", (short)0);
 			}
 
 			writer.WriteStructs(0x5D, unk_5D);
@@ -851,7 +787,7 @@ namespace CharaReader.data
 
 			// more goes here
 
-			writer.WritePointer("chr_file_len_ptr");
+			writer.WritePointer("chr_file_len_ptr");*/
 		}
 	}
 }

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 
 namespace CharaReader.data
@@ -385,7 +386,50 @@ namespace CharaReader.data
 			}
 		}
 
-		public void WriteDescriptions(byte[] data, int[] ptrs, int alignment = sizeof(int))
+		public void WriteDescriptions(string base_name, byte[] description)
+		{
+			List<string> keys_to_remove = new();
+			int old_offset;
+			for (int ptr = 0; ptr < description.Length - 1; ptr++)
+			{
+				foreach ((string key, Pointer pointer) in reserved_offsets)
+				{
+					if (key.StartsWith($"{base_name}_") && key.EndsWith($"_{ptr}"))
+					{
+						old_offset = offset;
+						offset = pointer.offset;
+						Write(old_offset);
+						keys_to_remove.Add(key);
+						offset = old_offset;
+					}
+				}
+				foreach (string val in keys_to_remove)
+				{
+					reserved_offsets.Remove(val);
+				}
+				keys_to_remove.Clear();
+				Write(description[ptr]);
+			}
+			offset += sizeof(int) - (offset % sizeof(int));
+			foreach ((string key, Pointer pointer) in reserved_offsets)
+			{
+				if (key.StartsWith($"{base_name}_") && key.EndsWith("end"))
+				{
+					old_offset = offset;
+					offset = pointer.offset;
+					Write(old_offset);
+					keys_to_remove.Add(key);
+					offset = old_offset;
+				}
+			}
+			foreach (string val in keys_to_remove)
+			{
+				reserved_offsets.Remove(val);
+			}
+			keys_to_remove.Clear();
+		}
+
+		public void WriteDescriptions(byte[] data, int[] ptrs)
 		{
 			if (offset + data.Length - 1 > _data.Length - 1)
 			{
@@ -432,7 +476,7 @@ namespace CharaReader.data
 			offset += count * sizeof(int);
 		}
 
-		public void WritePointer(string name)
+		public void WritePointer(string name, bool remove = true)
 		{
 			if (!reserved_offsets.TryGetValue(name, out Pointer ptr))
 			{
@@ -441,7 +485,7 @@ namespace CharaReader.data
 			int temp_offset = offset;
 			offset = ptr.offset + (ptr.index * sizeof(int));
 			ptr.index++;
-			if (ptr.index > ptr.count - 1)
+			if (remove && ptr.index > ptr.count - 1)
 			{
 				reserved_offsets.Remove(name);
 			}
@@ -449,7 +493,7 @@ namespace CharaReader.data
 			offset = temp_offset;
 		}
 
-		public void WritePointerID(string name, dynamic id)
+		public void WritePointerID(string name, dynamic id, bool remove = true)
 		{
 			if (!reserved_offsets.TryGetValue(name, out Pointer ptr))
 			{
@@ -458,7 +502,7 @@ namespace CharaReader.data
 			int temp_offset = offset;
 			offset = ptr.offset + (ptr.index * sizeof(int));
 			ptr.index += 2;
-			if (ptr.index > ptr.count - 1)
+			if (remove && ptr.index > ptr.count - 1)
 			{
 				reserved_offsets.Remove(name);
 			}
