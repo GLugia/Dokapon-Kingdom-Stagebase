@@ -388,45 +388,34 @@ namespace CharaReader.data
 
 		public void WriteDescriptions(string base_name, byte[] description)
 		{
-			List<string> keys_to_remove = new();
-			int old_offset;
 			for (int ptr = 0; ptr < description.Length - 1; ptr++)
 			{
-				foreach ((string key, Pointer pointer) in reserved_offsets)
-				{
-					if (key.StartsWith($"{base_name}_") && key.EndsWith($"_{ptr}"))
-					{
-						old_offset = offset;
-						offset = pointer.offset;
-						Write(old_offset);
-						keys_to_remove.Add(key);
-						offset = old_offset;
-					}
-				}
-				foreach (string val in keys_to_remove)
-				{
-					reserved_offsets.Remove(val);
-				}
-				keys_to_remove.Clear();
+				WriteAllPointers(base_name, ptr);
 				Write(description[ptr]);
 			}
 			offset += sizeof(int) - (offset % sizeof(int));
-			foreach ((string key, Pointer pointer) in reserved_offsets)
+			WriteAllPointers(base_name, "end");
+		}
+
+		public void WriteAllPointers(string base_name, object ending) // ending can be an int offset or 'end'
+		{
+			List<string> keys_to_remove = new();
+			int old_offset;
+			foreach ((string key, Pointer ptr) in reserved_offsets)
 			{
-				if (key.StartsWith($"{base_name}_") && key.EndsWith("end"))
+				if (key.StartsWith($"{base_name}_") && key.EndsWith($"_{ending}"))
 				{
 					old_offset = offset;
-					offset = pointer.offset;
+					offset = ptr.offset;
 					Write(old_offset);
 					keys_to_remove.Add(key);
 					offset = old_offset;
 				}
 			}
-			foreach (string val in keys_to_remove)
+			foreach (string key in keys_to_remove)
 			{
-				reserved_offsets.Remove(val);
+				reserved_offsets.Remove(key);
 			}
-			keys_to_remove.Clear();
 		}
 
 		public void WriteDescriptions(byte[] data, int[] ptrs)

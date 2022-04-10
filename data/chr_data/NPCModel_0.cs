@@ -6,7 +6,7 @@
 		public string f0;
 		public string k0;
 		public string fg0;
-		public Descriptions[] unk_00;
-		public Descriptions[] unk_01;
+		public Descriptions descriptions_0;
+		public Descriptions descriptions_1;
 	}
 }

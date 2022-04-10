@@ -200,6 +200,7 @@ namespace CharaReader
 		{
 			int offset = start_offset - origin_offset;
 			int temp;
+			// scan until we find the 'end' offset
 			while ((temp = BitConverter.ToInt32(data.AsSpan()[offset..(offset + sizeof(int))])) != end_value)
 			{
 				offset += alignment;
@@ -209,6 +210,7 @@ namespace CharaReader
 					break;
 				}
 			}
+			// actually set the pointers
 			SetPointers(data, origin_offset, ref ref_ptrs, start_offset, offset + origin_offset, separator, alignment);
 		}
 
