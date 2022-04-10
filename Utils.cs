@@ -68,7 +68,7 @@ namespace CharaReader
 			return obj.ToString();
 		}
 
-		public static int Size<T>(this T obj)
+		public static int Size(this object obj)
 		{
 			Type type = obj.GetType();
 			int ret = 0;
@@ -183,12 +183,13 @@ namespace CharaReader
 			return info != null;
 		}
 
-		public static string ReadString(this byte[] data, int offset, byte separator = 0)
+		public static string ReadString(this byte[] data, int offset, dynamic separator = null)
 		{
+			separator ??= (byte)0;
 			int end;
 			for (end = offset; end < data.Length - 1; end++)
 			{
-				if (data[end] == separator)
+				if (DynamicPeek(data, end, separator) == separator)
 				{
 					break;
 				}
@@ -196,42 +197,73 @@ namespace CharaReader
 			return Program.shift_jis.GetString(data.AsSpan()[offset..end]);
 		}
 
-		public static void SetPointers2(this byte[] data, int origin_offset, ref int[] ref_ptrs, int start_offset, int end_value, byte separator = 0, int alignment = sizeof(int))
+		public static void SetPointers(this byte[] data, int origin_offset, ref int[] ref_ptrs, int start_offset, int? end_offset = null, dynamic separator = null, int alignment = sizeof(int))
 		{
 			int offset = start_offset - origin_offset;
-			int temp;
-			// scan until we find the 'end' offset
-			while ((temp = BitConverter.ToInt32(data.AsSpan()[offset..(offset + sizeof(int))])) != end_value)
+			int end;
+			if (end_offset != null)
 			{
-				offset += alignment;
-				if (offset == data.Length - sizeof(int))
-				{
-					offset += sizeof(int);
-					break;
-				}
+				end = end_offset.Value - origin_offset;
 			}
-			// actually set the pointers
-			SetPointers(data, origin_offset, ref ref_ptrs, start_offset, offset + origin_offset, separator, alignment);
-		}
-
-		public static void SetPointers(this byte[] data, int origin_offset, ref int[] ref_ptrs, int start_offset, int end_offset, byte separator = 0, int alignment = sizeof(int))
-		{
-			int offset = start_offset - origin_offset;
-			int end = end_offset - origin_offset;
-			while (offset < end)
+			// if the separator is null, read until we find a 32bit 0
+			else if (separator == null)
 			{
-				Array.Resize(ref ref_ptrs, ref_ptrs.Length + 1);
-				ref_ptrs[^1] = offset;
-				while (offset < end)
+				for (end = offset; end < data.Length - sizeof(int); end += sizeof(int))
 				{
-					if (data[offset] == separator)
+					if (BitConverter.ToUInt32(data, end) == 0)
 					{
 						break;
 					}
-					offset++;
 				}
-				offset += alignment - (offset % alignment);
+				if (end == data.Length - sizeof(uint))
+				{
+					end = data.Length - 1;
+				}
 			}
+			// otherwise read until we find the separator itself
+			// due to this not being a necessary loop over the data array, we simply append the offset as a pointer
+			else
+			{
+				Array.Resize(ref ref_ptrs, ref_ptrs.Length + 1);
+				ref_ptrs[^1] = offset;
+				return;
+			}
+			separator ??= (byte)0;
+			dynamic value;
+			for (; offset < end; offset += alignment - (offset % alignment))
+			{
+				Array.Resize(ref ref_ptrs, ref_ptrs.Length + 1);
+				ref_ptrs[^1] = offset;
+				for (; offset + alignment < end; offset++)
+				{
+					value = DynamicPeek(data, offset, separator);
+					if (value == separator)
+					{
+						break;
+					}
+				}
+			}
+		}
+
+		public static dynamic DynamicPeek(byte[] data, int offset, dynamic separator)
+		{
+			return separator.GetType().Name.ToLowerInvariant() switch
+			{
+				"char" => Program.shift_jis.GetChars(data, offset, 1)[0],
+				"byte" => data[offset],
+				"sbyte" => (sbyte)data[offset],
+				"bool" => BitConverter.ToBoolean(data, offset),
+				"uint16" => BitConverter.ToUInt16(data, offset),
+				"int16" => BitConverter.ToInt16(data, offset),
+				"uint32" => BitConverter.ToUInt32(data, offset),
+				"int32" => BitConverter.ToInt32(data, offset),
+				"uint64" => BitConverter.ToUInt64(data, offset),
+				"int64" => BitConverter.ToInt64(data, offset),
+				"single" => BitConverter.ToSingle(data, offset),
+				"double" => BitConverter.ToDouble(data, offset),
+				"string" => ReadString(data, offset),
+				_ => throw new Exception($"Unahandled object type: {separator}")
+			};
 		}
 
 		public static Array ConvertTo(byte[] data, dynamic type)

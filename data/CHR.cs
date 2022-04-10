@@ -353,7 +353,7 @@ namespace CharaReader.data
 						{
 							Array.Resize(ref npc_names, npc_names.Length + 1);
 							reader.ReadInt32();
-							npc_names[^1] = ReadDescriptions2(reader.ReadInt32(), 0, 0, sizeof(short), null);
+							npc_names[^1] = ReadDescriptions(reader.ReadInt32(), null, null, sizeof(short), null);
 							break;
 						}
 					case 0x17: unk_17 = reader.ReadStructs<Unk_17>(table_id); break;
@@ -372,7 +372,7 @@ namespace CharaReader.data
 							npc_enemy_models_0[item_id].item_id = item_id;
 							npc_enemy_models_0[item_id].f0 = reader.ReadString();
 							npc_enemy_models_0[item_id].fg0 = reader.ReadString();
-							npc_enemy_models_0[item_id].description = ReadDescriptions3(reader, 0xFFFF, 1, sizeof(int),
+							npc_enemy_models_0[item_id].description = ReadDescriptions2(reader, (ushort)0xFFFF, sizeof(int),
 								npc_enemy_models_0[item_id].description?.item_id ?? null);
 							break;
 						}
@@ -395,8 +395,8 @@ namespace CharaReader.data
 							npc_models_0[item_id].f0 = reader.ReadString();
 							npc_models_0[item_id].k0 = reader.ReadString();
 							npc_models_0[item_id].fg0 = reader.ReadString();
-							npc_models_0[item_id].descriptions_0 = ReadDescriptions3(reader, 0xFFFF, 0xFF, sizeof(ushort), npc_models_0[0].descriptions_0?.item_id ?? null);
-							npc_models_0[item_id].descriptions_1 = ReadDescriptions3(reader, 0xFFFF, 0xFF, sizeof(ushort), npc_models_0[0].descriptions_0?.item_id ?? null);
+							npc_models_0[item_id].descriptions_0 = ReadDescriptions2(reader, (ushort)0xFFFF, sizeof(ushort), npc_models_0[0].descriptions_0?.item_id ?? null);
+							npc_models_0[item_id].descriptions_1 = ReadDescriptions2(reader, (ushort)0xFFFF, sizeof(ushort), npc_models_0[0].descriptions_0?.item_id ?? null);
 							break;
 						}
 					case 0x5D: unk_5D = reader.ReadStructs<Unk_5D>(table_id); break;
@@ -413,7 +413,7 @@ namespace CharaReader.data
 		}
 
 		// Reads a pointer declaring a starting and ending offset
-		private Descriptions ReadDescriptions(int start_offset, int end_offset, byte separator = 0, int alignment = sizeof(int), int? custom_id = null)
+		private Descriptions ReadDescriptions(int start_offset, int? end_offset, dynamic separator = null, int alignment = sizeof(int), int? custom_id = null)
 		{
 			Descriptions ret = new()
 			{
@@ -424,20 +424,8 @@ namespace CharaReader.data
 			return ret;
 		}
 
-		// Reads a pointer declaring only a starting offset but has a dedicated final value
-		private Descriptions ReadDescriptions2(int start_offset, int end_value, byte separator = 0, int alignment = sizeof(int), int? custom_id = null)
-		{
-			Descriptions ret = new()
-			{
-				item_id = custom_id ?? descriptions.Length,
-				ptrs = Array.Empty<int>()
-			};
-			description_ptr_handlers.Add((a, b) => Utils.SetPointers2(a, b, ref ret.ptrs, start_offset, end_value, separator, alignment));
-			return ret;
-		}
-
 		// Reads an array of ordered pointers separated by a 32bit boolean value
-		private Descriptions ReadDescriptions3(DataReader reader, int end_value, byte separator = 0, int alignment = sizeof(int), int? custom_id = null)
+		private Descriptions ReadDescriptions2(DataReader reader, dynamic separator = null, int alignment = sizeof(int), int? custom_id = null)
 		{
 			Descriptions ret = new()
 			{
@@ -454,7 +442,7 @@ namespace CharaReader.data
 				// create a new action for the 0x03 object to invoke
 				description_ptr_handlers.Add(new(delegate (byte[] a, int b)
 				{
-					Utils.SetPointers2(a, b, ref ret.ptrs, start_offset, end_value, separator, alignment);
+					Utils.SetPointers(a, b, ref ret.ptrs, start_offset, null, separator, alignment);
 				}));
 			}
 			return ret;
@@ -692,6 +680,7 @@ namespace CharaReader.data
 			writer.WriteStructs(0x50, npc_enemies);
 			writer.WriteStructs(0x53, npc_enemy_drop_tables);
 			writer.WriteStructs(0x51, npc_enemy_models);
+			
 			for (int i = 0; i < npc_enemy_models_0.Length; i++)
 			{
 				if (string.IsNullOrEmpty(npc_enemy_models_0[i].f0))
@@ -703,18 +692,9 @@ namespace CharaReader.data
 				writer.Write(npc_enemy_models_0[i].item_id);
 				writer.Write(npc_enemy_models_0[i].f0);
 				writer.Write(npc_enemy_models_0[i].fg0);
-				// iterate all pointers within the 0x03 description object
-				for (int j = 0; j < npc_enemy_models_0[i].description.ptrs.Length; j++)
-				{
-					// 32bit boolean to tell the reader there's another pointer
-					writer.Write(1);
-					// the id of this pointer
-					writer.Write(j);
-					// include the npc id in the name to avoid errors
-					writer.ReservePointerNoID($"npc_enemy_data_{i}_{npc_enemy_models_0[i].description.ptrs[j]}");
-				}
-				writer.Write(0);
+				writer.ReservePointerArray("npc_enemy_data", npc_enemy_models_0[i].description.ptrs);
 			}
+			
 			writer.WriteStructs(0x5B, unk_5B);
 			writer.WriteStructs(0x62, unk_62);
 			writer.WriteStructs(0x52, unk_52);
@@ -738,27 +718,8 @@ namespace CharaReader.data
 				writer.Write(npc_models_0[i].f0);
 				writer.Write(npc_models_0[i].k0);
 				writer.Write(npc_models_0[i].fg0);
-				// iterate all pointers within the first 0x03 description object
-				for (int j = 0; j < npc_models_0[i].descriptions_0.ptrs.Length; j++)
-				{
-					// 32bit boolean to tell the reader there's another pointer
-					writer.Write(1);
-					// the id of this pointer
-					writer.Write(j);
-					// include the npc id in the name to avoid errors
-					writer.ReservePointerNoID($"npc_model_0_{i}_{npc_models_0[i].descriptions_0.ptrs[j]}");
-				}
-				writer.Write(0);
-				for (int j = 0; j < npc_models_0[i].descriptions_1.ptrs.Length; j++)
-				{
-					// 32bit boolean to tell the reader there's another pointer
-					writer.Write(1);
-					// the id of this pointer
-					writer.Write(j);
-					// include the npc id in the name to avoid errors
-					writer.ReservePointerNoID($"npc_model_1_{i}_{npc_models_0[i].descriptions_1.ptrs[j]}");
-				}
-				writer.Write(0);
+				writer.ReservePointerArray("npc_model_0", npc_models_0[i].descriptions_0.ptrs);
+				writer.ReservePointerArray("npc_model_1", npc_models_0[i].descriptions_1.ptrs);
 			}
 			
 			writer.ReservePointer(0x03, "des_end_ptr");
@@ -768,7 +729,7 @@ namespace CharaReader.data
 
 			writer.WriteStructs(0x5D, unk_5D);
 			writer.WriteStructs(0x2A, unk_2A);
-
+			
 			// more goes here
 
 			writer.WritePointer("chr_file_len_ptr");

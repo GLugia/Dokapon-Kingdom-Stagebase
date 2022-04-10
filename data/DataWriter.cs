@@ -390,6 +390,10 @@ namespace CharaReader.data
 		{
 			for (int ptr = 0; ptr < description.Length - 1; ptr++)
 			{
+				if (ptr == description.Length - 3)
+				{
+					;
+				}
 				WriteAllPointers(base_name, ptr);
 				Write(description[ptr]);
 			}
@@ -420,6 +424,10 @@ namespace CharaReader.data
 
 		public void WriteDescriptions(byte[] data, int[] ptrs)
 		{
+			if (ptrs.Length <= 0)
+			{
+				return;
+			}
 			if (offset + data.Length - 1 > _data.Length - 1)
 			{
 				Array.Resize(ref _data, offset + data.Length + 1);
@@ -442,7 +450,7 @@ namespace CharaReader.data
 			offset += sizeof(int) - (offset % sizeof(int));
 		}
 
-		public void ReservePointer(int id, string name, int count = 1)
+		public void ReservePointer(dynamic id, string name, int count = 1)
 		{
 			Write(id);
 			reserved_offsets.Add(name, new Pointer
@@ -463,6 +471,33 @@ namespace CharaReader.data
 				count = count
 			});
 			offset += count * sizeof(int);
+		}
+
+		public void ReservePointerArray(string name, int[] ptrs)
+		{
+			string real_name;
+			int dupe;
+			for (int i = 0; i < ptrs.Length; i++)
+			{
+				// this do/while loop essentially avoids any and all errors since duplicates are very common
+				dupe = 0;
+				do
+				{
+					real_name = $"{name}_{i}_{dupe}_{ptrs[i]}";
+					dupe++;
+				}
+				while (reserved_offsets.ContainsKey(real_name));
+				Write(1); // declare that there is another pointer
+				Write(i); // the id of this pointer
+				reserved_offsets.Add(real_name, new Pointer
+				{
+					offset = offset,
+					index = 0,
+					count = 1
+				});
+				offset += sizeof(int);
+			}
+			Write(0);
 		}
 
 		public void WritePointer(string name, bool remove = true)

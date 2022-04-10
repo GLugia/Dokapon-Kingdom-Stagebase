@@ -43,7 +43,10 @@ namespace CharaReader
 				return;
 			}
 
-			Console.Out.WriteLine($"Completion rate: {Math.Round(((double)decompiled_size / (double)real_size) * 100, 2)}%");
+			if (!CompareStagebase())
+			{
+				Console.Out.WriteLine("Failed to compare STAGEBASE.DAT to STAGEBASE_NEW.DAT");
+			}
 		}
 
 		private static bool ReadBAS()
@@ -214,6 +217,54 @@ namespace CharaReader
 				stream.Close();
 				//File.Delete(bas);
 				//File.Delete(chr);
+				return true;
+			}
+			catch (Exception e)
+			{
+				Console.Out.WriteLine(e);
+			}
+			return false;
+		}
+
+		private static bool CompareStagebase()
+		{
+			string sb = "STAGEBASE.DAT";
+			string sbn = "STAGEBASE_NEW.DAT";
+			if (!File.Exists(sb))
+			{
+				Console.Out.WriteLine(new FileNotFoundException(sb));
+				return false;
+			}
+			if (!File.Exists(sbn))
+			{
+				Console.Out.WriteLine(new FileNotFoundException(sbn));
+				return false;
+			}
+			try
+			{
+				byte[] sb_data = File.ReadAllBytes(sb);
+				byte[] sbn_data = File.ReadAllBytes(sbn);
+				int smallest_array_size = sb_data.Length > sbn_data.Length ? sbn_data.Length - 1 : sb_data.Length - 1;
+				int total_correct_bytes = 0;
+				int total_incorrect_bytes = 0;
+				for (int i = 0x30; i < smallest_array_size; i++)
+				{
+					if (sb_data[i] == sbn_data[i])
+					{
+						total_correct_bytes++;
+					}
+					else
+					{
+						total_incorrect_bytes++;
+					}
+				}
+				double eq = Math.Round(total_correct_bytes / ((double)(sb_data.Length - 1)) * 100.0d, 2);
+				double ieq = Math.Round(total_incorrect_bytes / ((double)(sb_data.Length - 1)) * 100.0d, 2);
+				double size = Math.Round((sbn_data.Length - 1) / ((double)(sb_data.Length - 1)) * 100.0d, 2);
+				Console.Out.WriteLine($"Completion rate:");
+				Console.Out.WriteLine($"\tEquality: {eq}%");
+				Console.Out.WriteLine($"\tInequality: {ieq}%");
+				Console.Out.WriteLine($"\tSize: {size}%");
 				return true;
 			}
 			catch (Exception e)

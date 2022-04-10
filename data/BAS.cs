@@ -293,7 +293,7 @@ namespace CharaReader.data
 			}
 		}
 
-		private Descriptions ReadDescriptions(DataReader reader, byte separator = 0, int alignment = sizeof(int))
+		private Descriptions ReadDescriptions(DataReader reader, dynamic separator = null, int alignment = sizeof(int))
 		{
 			Descriptions ret = new()
 			{
@@ -306,7 +306,7 @@ namespace CharaReader.data
 			return ret;
 		}
 
-		private Descriptions ReadDescriptions(DataReader reader, int end_value, byte separator = 0, int alignment = sizeof(int))
+		private Descriptions ReadDescriptions2(DataReader reader, dynamic separator = null, int alignment = sizeof(int))
 		{
 			Descriptions ret = new()
 			{
@@ -314,7 +314,7 @@ namespace CharaReader.data
 				ptrs = Array.Empty<int>()
 			};
 			int start_offset = reader.ReadInt32();
-			description_ptr_handlers.Add((a, b) => Utils.SetPointers2(a, b, ref ret.ptrs, start_offset, end_value, separator, alignment));
+			description_ptr_handlers.Add((a, b) => Utils.SetPointers(a, b, ref ret.ptrs, start_offset, null, separator, alignment));
 			return ret;
 		}
 
