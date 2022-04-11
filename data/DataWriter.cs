@@ -390,10 +390,6 @@ namespace CharaReader.data
 		{
 			for (int ptr = 0; ptr < description.Length - 1; ptr++)
 			{
-				if (ptr == description.Length - 3)
-				{
-					;
-				}
 				WriteAllPointers(base_name, ptr);
 				Write(description[ptr]);
 			}
@@ -514,6 +510,23 @@ namespace CharaReader.data
 				reserved_offsets.Remove(name);
 			}
 			Write(temp_offset);
+			offset = temp_offset;
+		}
+
+		public void ForcePointer(string name, int forced_offset)
+		{
+			if (!reserved_offsets.TryGetValue(name, out Pointer ptr))
+			{
+				throw new KeyNotFoundException($"No pointer of name '{name}' was found.");
+			}
+			int temp_offset = offset;
+			offset = ptr.offset + (ptr.index * sizeof(int));
+			ptr.index++;
+			if (ptr.index > ptr.count - 1)
+			{
+				reserved_offsets.Remove(name);
+			}
+			Write(forced_offset);
 			offset = temp_offset;
 		}
 

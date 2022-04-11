@@ -245,6 +245,38 @@ namespace CharaReader
 			}
 		}
 
+		public static void SetPointersFromPointers(this byte[] data, int origin_offset, ref data.chr_data.Unk_4F ref_4F, int start_offset)
+		{
+			int offset = start_offset - origin_offset;
+			int end = origin_offset + data.Length;
+			int temp_pointer;
+			while (offset < end && (temp_pointer = BitConverter.ToInt32(data, offset)) != 0)
+			{
+				Array.Resize(ref ref_4F.ptrs, ref_4F.ptrs.Length + 1);
+				ref_4F.ptrs[^1] = temp_pointer - origin_offset;
+				offset += sizeof(int);
+			}
+			int[] repeated_pointers = Array.Empty<int>();
+			for (int i = 0; i < ref_4F.ptrs.Length; i++)
+			{
+				if (Array.IndexOf(repeated_pointers, ref_4F.ptrs[i]) != -1)
+				{
+					continue;
+				}
+				offset = ref_4F.ptrs[i];
+				Array.Resize(ref repeated_pointers, repeated_pointers.Length + 1);
+				repeated_pointers[^1] = ref_4F.ptrs[i];
+				while (offset < end && data[offset] != 0xFF)
+				{
+					Array.Resize(ref ref_4F.description, ref_4F.description.Length + 1);
+					ref_4F.description[^1] = data[offset];
+					offset++;
+				}
+				Array.Resize(ref ref_4F.description, ref_4F.description.Length + 1);
+				ref_4F.description[^1] = 0xFF;
+			}
+		}
+
 		public static dynamic DynamicPeek(byte[] data, int offset, dynamic separator)
 		{
 			return separator.GetType().Name.ToLowerInvariant() switch

@@ -1,7 +1,8 @@
 ﻿namespace CharaReader.data.chr_data
 {
-	public struct Unk_4F
+	public class Unk_4F
 	{
-		public int value;
+		public int[] ptrs;
+		public byte[] description;
 	}
 }
