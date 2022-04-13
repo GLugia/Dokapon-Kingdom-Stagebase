@@ -1,6 +1,6 @@
-﻿namespace CharaReader.data.chr_data
+﻿namespace CharaReader.data
 {
-	public class Unk_4F
+	public class Description
 	{
 		public int[] ptrs;
 		public byte[] description;

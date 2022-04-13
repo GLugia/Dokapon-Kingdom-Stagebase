@@ -386,17 +386,6 @@ namespace CharaReader.data
 			}
 		}
 
-		public void WriteDescriptions(string base_name, byte[] description)
-		{
-			for (int ptr = 0; ptr < description.Length - 1; ptr++)
-			{
-				WriteAllPointers(base_name, ptr);
-				Write(description[ptr]);
-			}
-			offset += sizeof(int) - (offset % sizeof(int));
-			WriteAllPointers(base_name, "end");
-		}
-
 		public void WriteAllPointers(string base_name, object ending) // ending can be an int offset or 'end'
 		{
 			List<string> keys_to_remove = new();
@@ -418,32 +407,85 @@ namespace CharaReader.data
 			}
 		}
 
-		public void WriteDescriptions(byte[] data, int[] ptrs)
+		/// <summary>
+		/// Handles writing to all pointers that reference an offset comparative to the origin offset of the byte array.
+		/// </summary>
+		/// <param name="base_name">The base name of all pointers referencing this Description.</param>
+		/// <param name="description">The description to write.</param>
+		public void WriteDescriptions(string base_name, Description description)
 		{
-			if (ptrs.Length <= 0)
+			if (description.ptrs.Length <= 0)
 			{
 				return;
 			}
-			if (offset + data.Length - 1 > _data.Length - 1)
+			if (offset + description.description.Length - 1 > _data.Length - 1)
 			{
-				Array.Resize(ref _data, offset + data.Length + 1);
+				Array.Resize(ref _data, offset + description.description.Length + 1);
 			}
-			for (int i = 0; i < ptrs.Length - 1; i++)
+			int origin = offset;
+			for (int i = 0; i < description.ptrs.Length; i++)
 			{
-				for (int ptr = ptrs[i]; ptr < ptrs[i + 1]; ptr++)
+				offset = origin + description.ptrs[i];
+				WritePointer($"{base_name}_{i}_{description.ptrs[i]}");
+			}
+			offset = origin;
+			Write(description.description);
+		}
+
+		public void WriteDescriptions(string base_name, Description[] descriptions, dynamic separator)
+		{
+			byte[] total = Array.Empty<byte>();
+			int separator_size = Utils.Size(separator);
+			for (int i = 0; i < descriptions.Length; i++)
+			{
+				if (descriptions[i] == null || (descriptions[i] != null && (descriptions[i].ptrs.Length == 0 || descriptions[i].description.Length == 0)))
 				{
-					Write(data[ptr]);
+					continue;
+				}
+				int index = 0;
+				for (int j = 0; j < descriptions[i].ptrs.Length; j++)
+				{
+					int end;
+					for (end = index + 1; end + separator_size < descriptions[i].description.Length; end++)
+					{
+						dynamic value = Utils.DynamicPeek(descriptions[i].description, end, separator);
+						if (value == separator)
+						{
+							end += separator_size;
+							break;
+						}
+					}
+					if (end + separator_size >= descriptions[i].description.Length)
+					{
+						end = descriptions[i].description.Length;
+					}
+					byte[] data = descriptions[i].description[index..end];
+					if (descriptions[i].ptrs[j] + data.Length > total.Length - 1)
+					{
+						Array.Resize(ref total, descriptions[i].ptrs[j] + data.Length);
+					}
+					data.CopyTo(total, descriptions[i].ptrs[j]);
+					index = end;
 				}
 			}
-			for (int ptr = ptrs[^1]; ptr < data.Length - 1; ptr++)
+			for (int i = 0; i < total.Length; i++)
 			{
-				if (data[ptr] == 0)
-				{
-					break;
-				}
-				Write(data[ptr]);
+				WriteAllPointers(base_name, i);
+				Write(total[i]);
 			}
-			offset += sizeof(int) - (offset % sizeof(int));
+		}
+
+		/// <summary>
+		/// Handles writing the stored byte array in a Description
+		/// </summary>
+		/// <param name="description">The Description to write.</param>
+		public void WriteDescriptions(Description description)
+		{
+			if (description.description.Length <= 0)
+			{
+				return;
+			}
+			Write(description.description);
 		}
 
 		public void ReservePointer(dynamic id, string name, int count = 1)
@@ -471,21 +513,11 @@ namespace CharaReader.data
 
 		public void ReservePointerArray(string name, int[] ptrs)
 		{
-			string real_name;
-			int dupe;
 			for (int i = 0; i < ptrs.Length; i++)
 			{
-				// this do/while loop essentially avoids any and all errors since duplicates are very common
-				dupe = 0;
-				do
-				{
-					real_name = $"{name}_{i}_{dupe}_{ptrs[i]}";
-					dupe++;
-				}
-				while (reserved_offsets.ContainsKey(real_name));
 				Write(1); // declare that there is another pointer
 				Write(i); // the id of this pointer
-				reserved_offsets.Add(real_name, new Pointer
+				reserved_offsets.Add($"{name}_{i}_{ptrs[i]}", new Pointer
 				{
 					offset = offset,
 					index = 0,

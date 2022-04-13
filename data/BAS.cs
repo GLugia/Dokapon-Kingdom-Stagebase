@@ -14,7 +14,7 @@ namespace CharaReader.data
 		public Stage[] stages;
 		public Unk_6E[] unk_6E;
 		public Location[] locations;
-		public Descriptions space_descriptions;
+		public Description space_descriptions;
 		public Space[] spaces;
 		public Temple[] temples;
 		public Unk_68[] unk_68;
@@ -108,7 +108,7 @@ namespace CharaReader.data
 						}
 					case 0x6E: unk_6E = reader.ReadStructs<Unk_6E>(table_id); break;
 					case 0x37: locations = reader.ReadStructs<Location>(table_id); break;
-					case 0x88: space_descriptions = ReadDescriptions(reader); break;
+					case 0x88: space_descriptions = ReadDescription_String(reader); break;
 					case 0x87: spaces = reader.ReadStructs<Space>(table_id); break;
 					case 0x67: temples = reader.ReadStructs<Temple>(table_id); break;
 					case 0x68: unk_68 = reader.ReadStructs<Unk_68>(table_id); break;
@@ -293,28 +293,16 @@ namespace CharaReader.data
 			}
 		}
 
-		private Descriptions ReadDescriptions(DataReader reader, dynamic separator = null, int alignment = sizeof(int))
+		private Description ReadDescription_String(DataReader reader, int alignment = sizeof(int))
 		{
-			Descriptions ret = new()
+			Description ret = new()
 			{
-				item_id = descriptions.Length,
-				ptrs = Array.Empty<int>()
+				ptrs = Array.Empty<int>(),
+				description = Array.Empty<byte>()
 			};
 			int start_offset = reader.ReadInt32(); // these pointers aren't needed for our purposes. they are still written to file later on.
 			int end_offset = reader.ReadInt32();
-			description_ptr_handlers.Add((a, b) => Utils.SetPointers(a, b, ref ret.ptrs, start_offset, end_offset, separator, alignment));
-			return ret;
-		}
-
-		private Descriptions ReadDescriptions2(DataReader reader, dynamic separator = null, int alignment = sizeof(int))
-		{
-			Descriptions ret = new()
-			{
-				item_id = descriptions.Length,
-				ptrs = Array.Empty<int>()
-			};
-			int start_offset = reader.ReadInt32();
-			description_ptr_handlers.Add((a, b) => Utils.SetPointers(a, b, ref ret.ptrs, start_offset, null, separator, alignment));
+			description_ptr_handlers.Add((a, b) => Utils.ReadDescription_String(a, b, ref ret, start_offset, end_offset, alignment));
 			return ret;
 		}
 
@@ -335,7 +323,7 @@ namespace CharaReader.data
 
 			writer.WriteStructs(0x6E, unk_6E);
 			writer.WriteStructs(0x37, locations);
-			writer.ReservePointer(0x88, "des_ptr", 2);
+			writer.ReservePointer(0x88, "space_descriptions", 2);
 			writer.WriteStructs(0x87, spaces);
 			writer.WriteStructs(0x67, temples);
 			writer.WriteStructs(0x68, unk_68);
@@ -346,9 +334,9 @@ namespace CharaReader.data
 			writer.WriteStructs(0x93, unk_93);
 			writer.ReservePointer(0x03, "des_end_ptr");
 			writer.Write(0);
-			writer.WritePointer("des_ptr");
-			writer.WriteDescriptions(descriptions[space_descriptions.item_id], space_descriptions.ptrs);
-			writer.WritePointer("des_ptr");
+			writer.WritePointer("space_descriptions");
+			writer.WriteDescriptions(space_descriptions);
+			writer.WritePointer("space_descriptions");
 			writer.WritePointer("des_end_ptr");
 			writer.WriteStructs(0x2B, unk_2B);
 

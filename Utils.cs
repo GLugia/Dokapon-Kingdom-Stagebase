@@ -1,4 +1,5 @@
-﻿using System;
+﻿using CharaReader.data;
+using System;
 using System.Linq;
 using System.Reflection;
 
@@ -183,21 +184,32 @@ namespace CharaReader
 			return info != null;
 		}
 
-		public static string ReadString(this byte[] data, int offset, dynamic separator = null)
+		public static string ReadString(this byte[] data, int offset, int alignment = sizeof(int))
 		{
-			separator ??= (byte)0;
 			int end;
 			for (end = offset; end < data.Length - 1; end++)
 			{
-				if (DynamicPeek(data, end, separator) == separator)
+				if (data[end] == 0)
 				{
 					break;
 				}
 			}
+			end += alignment - (end % alignment);
 			return Program.shift_jis.GetString(data.AsSpan()[offset..end]);
 		}
 
-		public static void SetPointers(this byte[] data, int origin_offset, ref int[] ref_ptrs, int start_offset, int? end_offset = null, dynamic separator = null, int alignment = sizeof(int))
+		/// <summary>
+		/// Appends offsets of string values found in <paramref name="data"/> between <paramref name="start_offset"/> and <paramref name="end_offset"/>.
+		/// If no <paramref name="end_offset"/> is given, reads until a 32bit value equals 0.
+		/// Then sets <paramref name="description"/>.description to the bytes between <paramref name="start_offset"/> and <paramref name="end_offset"/>.
+		/// </summary>
+		/// <typeparam name="T">The alignment type of this read. Must be a primitive type.</typeparam>
+		/// <param name="data">The array of bytes to read from.</param>
+		/// <param name="origin_offset">The original offset from the file of the first index in <paramref name="data"/>.</param>
+		/// <param name="description">The description to set.</param>
+		/// <param name="start_offset">The file offset referenced as the first index of this read.</param>
+		/// <param name="end_offset">The file offset referenced as the last index of this read.</param>
+		public static void ReadDescription_String(this byte[] data, int origin_offset, ref Description description, int start_offset, int? end_offset = null, int alignment = sizeof(int))
 		{
 			int offset = start_offset - origin_offset;
 			int end;
@@ -205,8 +217,7 @@ namespace CharaReader
 			{
 				end = end_offset.Value - origin_offset;
 			}
-			// if the separator is null, read until we find a 32bit 0
-			else if (separator == null)
+			else
 			{
 				for (end = offset; end < data.Length - sizeof(int); end += sizeof(int))
 				{
@@ -215,29 +226,22 @@ namespace CharaReader
 						break;
 					}
 				}
-				if (end == data.Length - sizeof(uint))
+				if (end == data.Length - sizeof(int))
 				{
 					end = data.Length - 1;
 				}
 			}
-			// otherwise read until we find the separator itself
-			// due to this not being a necessary loop over the data array, we simply append the offset as a pointer
-			else
-			{
-				Array.Resize(ref ref_ptrs, ref_ptrs.Length + 1);
-				ref_ptrs[^1] = offset;
-				return;
-			}
-			separator ??= (byte)0;
-			dynamic value;
+			description.description = data[offset..end];
 			for (; offset < end; offset += alignment - (offset % alignment))
 			{
-				Array.Resize(ref ref_ptrs, ref_ptrs.Length + 1);
-				ref_ptrs[^1] = offset;
-				for (; offset + alignment < end; offset++)
+				Array.Resize(ref description.ptrs, description.ptrs.Length + 1);
+				// the offset is based on the original data length. this is intended.
+				// 0-index is description.ptrs[i] - description.ptrs[0]
+				// this assumes pointers exist to begin with.
+				description.ptrs[^1] = offset;
+				for (; offset < end; offset++)
 				{
-					value = DynamicPeek(data, offset, separator);
-					if (value == separator)
+					if (data[offset] == 0)
 					{
 						break;
 					}
@@ -245,41 +249,121 @@ namespace CharaReader
 			}
 		}
 
-		public static void SetPointersFromPointers(this byte[] data, int origin_offset, ref data.chr_data.Unk_4F ref_4F, int start_offset)
+		public static void ReadDescription_Array(this byte[] data, int origin_offset, ref Description description, int start_offset, int? end_offset, dynamic separator, int alignment = sizeof(int))
+		{
+			// get the 0-based-index to reference the data array
+			int offset = start_offset - origin_offset;
+			int end;
+			int size = Size(separator);
+			if (end_offset != null)
+			{
+				// this results to a value within the bounds of the data array
+				end = end_offset.Value - origin_offset;
+			}
+			else
+			{
+				// if no end_offset is given, scan the array for the given separator
+				for (end = offset; end < data.Length - 1; end++)
+				{
+					if (DynamicPeek(data, end, separator) == separator)
+					{
+						end += size;
+						break;
+					}
+				}
+			}
+			// append the data to the description array
+			Array.Resize(ref description.description, description.description.Length + (end - offset));
+			data[offset..end].CopyTo(description.description, description.description.Length - (end - offset));
+			Console.Out.WriteLine($"{offset.ToHexString()}:{end.ToHexString()}->{start_offset.ToHexString()}:{(end + origin_offset).ToHexString()}");
+			for (; offset < end; offset += alignment - (offset % alignment))
+			{
+				Array.Resize(ref description.ptrs, description.ptrs.Length + 1);
+				description.ptrs[^1] = offset;
+				for (; offset + alignment < end; offset++)
+				{
+					dynamic value = DynamicPeek(data, offset, separator);
+					if (value == separator)
+					{
+						offset += size;
+						break;
+					}
+				}
+			}
+		}
+
+		/// <summary>
+		/// Reads the <paramref name="data"/> from the next 0x03 object. This 0x03 object is specifically designed to contain
+		/// raw 32bit values. These values are read and stored in <paramref name="description"/>. The data array in <paramref name="description"/>
+		/// is completely ignored in this method.
+		/// </summary>
+		/// <param name="data"></param>
+		/// <param name="origin_offset"></param>
+		/// <param name="description"></param>
+		/// <param name="start_offset"></param>
+		public static void ReadDescription_Value(this byte[] data, int origin_offset, ref Description description, int start_offset)
+		{
+			int offset = start_offset - origin_offset;
+			int end;
+			int temp_pointer;
+			for (end = offset; end < data.Length - sizeof(int); end++)
+			{
+				temp_pointer = BitConverter.ToInt32(data, end);
+				if (temp_pointer == 0)
+				{
+					break;
+				}
+				Array.Resize(ref description.ptrs, description.ptrs.Length + 1);
+				description.ptrs[^1] = temp_pointer;
+				offset += sizeof(int);
+			}
+			description.description = data[offset..end];
+		}
+
+		/// <summary>
+		/// Reads the <paramref name="data"/> from the next 0x03 object. This 0x03 object is specifically designed to contain
+		/// offset pointers to indexes withing a following array of bytes. This method takes that array of bytes from <paramref name="data"/>
+		/// and moves it to <paramref name="description"/> while also storing the offsets to each important index within the array.
+		/// </summary>
+		/// <param name="data"></param>
+		/// <param name="origin_offset"></param>
+		/// <param name="description"></param>
+		/// <param name="start_offset"></param>
+		public static void ReadDescription_PointerArray(this byte[] data, int origin_offset, ref Description description, int start_offset)
 		{
 			int offset = start_offset - origin_offset;
 			int end = origin_offset + data.Length;
 			int temp_pointer;
 			while (offset < end && (temp_pointer = BitConverter.ToInt32(data, offset)) != 0)
 			{
-				Array.Resize(ref ref_4F.ptrs, ref_4F.ptrs.Length + 1);
-				ref_4F.ptrs[^1] = temp_pointer - origin_offset;
+				Array.Resize(ref description.ptrs, description.ptrs.Length + 1);
+				description.ptrs[^1] = temp_pointer - origin_offset;
 				offset += sizeof(int);
 			}
 			int[] repeated_pointers = Array.Empty<int>();
-			for (int i = 0; i < ref_4F.ptrs.Length; i++)
+			for (int i = 0; i < description.ptrs.Length; i++)
 			{
-				if (Array.IndexOf(repeated_pointers, ref_4F.ptrs[i]) != -1)
+				if (Array.IndexOf(repeated_pointers, description.ptrs[i]) != -1)
 				{
 					continue;
 				}
-				offset = ref_4F.ptrs[i];
+				offset = description.ptrs[i];
 				Array.Resize(ref repeated_pointers, repeated_pointers.Length + 1);
-				repeated_pointers[^1] = ref_4F.ptrs[i];
+				repeated_pointers[^1] = description.ptrs[i];
 				while (offset < end && data[offset] != 0xFF)
 				{
-					Array.Resize(ref ref_4F.description, ref_4F.description.Length + 1);
-					ref_4F.description[^1] = data[offset];
+					Array.Resize(ref description.description, description.description.Length + 1);
+					description.description[^1] = data[offset];
 					offset++;
 				}
-				Array.Resize(ref ref_4F.description, ref_4F.description.Length + 1);
-				ref_4F.description[^1] = 0xFF;
+				Array.Resize(ref description.description, description.description.Length + 1);
+				description.description[^1] = 0xFF;
 			}
 		}
 
-		public static dynamic DynamicPeek(byte[] data, int offset, dynamic separator)
+		public static dynamic DynamicPeek<T>(byte[] data, int offset)
 		{
-			return separator.GetType().Name.ToLowerInvariant() switch
+			return typeof(T).Name.ToLowerInvariant() switch
 			{
 				"char" => Program.shift_jis.GetChars(data, offset, 1)[0],
 				"byte" => data[offset],
@@ -293,8 +377,27 @@ namespace CharaReader
 				"int64" => BitConverter.ToInt64(data, offset),
 				"single" => BitConverter.ToSingle(data, offset),
 				"double" => BitConverter.ToDouble(data, offset),
-				"string" => ReadString(data, offset),
-				_ => throw new Exception($"Unahandled object type: {separator}")
+				_ => throw new Exception($"Invalid generic type: {typeof(T)}")
+			};
+		}
+
+		public static dynamic DynamicPeek(byte[] data, int offset, dynamic type)
+		{
+			return type.GetType().Name.ToLowerInvariant() switch
+			{
+				"char" => Program.shift_jis.GetChars(data, offset, 1)[0],
+				"byte" => data[offset],
+				"sbyte" => (sbyte)data[offset],
+				"bool" => BitConverter.ToBoolean(data, offset),
+				"uint16" => BitConverter.ToUInt16(data, offset),
+				"int16" => BitConverter.ToInt16(data, offset),
+				"uint32" => BitConverter.ToUInt32(data, offset),
+				"int32" => BitConverter.ToInt32(data, offset),
+				"uint64" => BitConverter.ToUInt64(data, offset),
+				"int64" => BitConverter.ToInt64(data, offset),
+				"single" => BitConverter.ToSingle(data, offset),
+				"double" => BitConverter.ToDouble(data, offset),
+				_ => throw new Exception($"Invalid type: {type.GetType().Name}")
 			};
 		}
 
