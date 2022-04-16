@@ -7,8 +7,8 @@ namespace CharaReader.data
 {
     public class CHR
     {
-        public string class_data_start;
-        public string class_data_end;
+        #region Completed Fields
+        public string[] file_labels;
 
         public byte[][] descriptions;
         public List<Action<byte[], int>> description_ptr_handlers;
@@ -110,6 +110,7 @@ namespace CharaReader.data
         public Description unk_4D;
         public Description unk_76;
         public Description unk_77;
+        #endregion
 
         public int length;
 
@@ -131,21 +132,8 @@ namespace CharaReader.data
             length = reader.ReadInt32();
             // jump to the offset listed after the length (0x30)
             reader.offset = reader.ReadInt32();
-            // read the first table_id. it should be 0x01.
-            // TODO: Handle 0x01 in the switch block
-            int table_id = reader.ReadInt32();
-            int end;
-            // this will always be true
-            if (table_id == 0x01)
-            {
-                // read the pointer to the end of the data
-                end = reader.ReadInt32();
-                // read the string naming this section
-                class_data_start = reader.ReadString();
-                // jump to the end of the data
-                reader.offset = end;
-            }
 
+            file_labels = Array.Empty<string>();
             descriptions = Array.Empty<byte[]>();
             description_ptr_handlers = new();
             job_unk_39 = Array.Empty<ushort[]>();
@@ -154,11 +142,14 @@ namespace CharaReader.data
             npc_enemy_models_0 = Array.Empty<NPCEnemyModel_0>();
             npc_models_0 = Array.Empty<NPCModel_0>();
 
+            int table_id;
+            int end;
             dynamic item_id;
             int temp;
             int offset;
             bool finished = false;
             // while finished is false and the offset is lower than the length
+            // TODO: remove finished variable once file handling is complete
             while (!finished && reader.offset < reader.length)
             {
                 // read the next table_id
@@ -166,6 +157,17 @@ namespace CharaReader.data
                 // according to the table_id's value, jump
                 switch (table_id)
                 {
+                    case 0x01:
+                        {
+                            // read the pointer to the end of the data
+                            end = reader.ReadInt32();
+                            // append the name of this label
+                            Array.Resize(ref file_labels, file_labels.Length + 1);
+                            file_labels[^1] = reader.ReadString();
+                            // jump to the end
+                            reader.offset = end;
+                            break;
+                        }
                     case 0x03:
                         {
                             // read the pointer to the end of the data
@@ -348,50 +350,6 @@ namespace CharaReader.data
                             break;
                         }
                     #endregion
-                    default:
-                        {
-                            // we stop here cuz 0x01 is labeled multiple times but handling it is kind of annoying
-                            // i'll fix it later i guess
-                            reader.offset -= sizeof(int);
-                            finished = true;
-                            break;
-                        }
-                }
-            }
-
-            // we aren't done
-            finished = false;
-            // read the 0x01 object
-            table_id = reader.ReadInt32();
-            if (table_id == 0x01)
-            {
-                end = reader.ReadInt32();
-                class_data_end = reader.ReadString();
-                reader.offset = end;
-            }
-
-            // back to work
-            while (!finished && reader.offset < reader.length)
-            {
-                table_id = reader.ReadInt32();
-                switch (table_id)
-                {
-                    case 0x03:
-                        {
-                            // i already commented this before. if you still have questions about it, read through DataReader and DataWriter.
-                            end = reader.ReadInt32();
-                            reader.ReadUInt32();
-                            offset = reader.offset;
-                            Array.Resize(ref descriptions, descriptions.Length + 1);
-                            descriptions[^1] = reader.ReadBytes(end - reader.offset);
-                            foreach (Action<byte[], int> action in description_ptr_handlers)
-                            {
-                                action.Invoke(descriptions[^1], offset);
-                            }
-                            description_ptr_handlers.Clear();
-                            break;
-                        }
-
                     #region Status Effects
                     case 0x81: status_permanent = reader.ReadStructs<StatusPermanent>(table_id); break;
                     case 0x82: status_battle = reader.ReadStructs<StatusBattle>(table_id); break;
@@ -494,7 +452,11 @@ namespace CharaReader.data
                     // read, from the next 0x03 object, an array of raw s32 values
                     case 0x76: unk_76 = ReadDescription_Value(reader.ReadInt32()); break;
                     case 0x77: unk_77 = ReadDescription_PointerArray(reader.ReadInt32()); break;
+                    // this is how we handle 'stopping points'
+                    // basically whenever we want to compare file data, we end it like this
+                    // at least until the project is actually finished
                     case 0xE2: finished = true; break;
+                    // if, for some reason, we forget to handle a table_id, this will let us know.
                     default: throw new Exception($"Unhandled table {(reader.offset - sizeof(int)).ToHexString()}->{((byte)table_id).ToHexString()}");
                 }
             }
@@ -594,9 +556,9 @@ namespace CharaReader.data
             writer.Write(0x30);
             writer.offset = 0x30;
             #region Class Data
-            writer.ReservePointer(0x01, "class_name_ptr");
-            writer.Write(class_data_start);
-            writer.WritePointer("class_name_ptr");
+            writer.ReservePointer(0x01, "label_ptr");
+            writer.Write(file_labels[0]);
+            writer.WritePointer("label_ptr");
 
             writer.ReservePointer(0x5A, "weapon_descriptions", 2);
             writer.ReservePointer(0x63, "weapon_bonus", 2);
@@ -772,9 +734,9 @@ namespace CharaReader.data
             writer.WritePointer("job_des_ptr");
             writer.WritePointer("des_end_ptr");
 
-            writer.ReservePointer(0x01, "class_name_ptr");
-            writer.Write(class_data_end);
-            writer.WritePointer("class_name_ptr");
+            writer.ReservePointer(0x01, "label_ptr");
+            writer.Write(file_labels[1]);
+            writer.WritePointer("label_ptr");
             #endregion
             #region Completed Data
             writer.WriteStructs(0x81, status_permanent);

@@ -238,8 +238,11 @@ namespace CharaReader
         /// <returns><see langword="false"/> if the field does not exist. <see langword="true"/> otherwise.</returns>
         public static bool TryGetField(this object obj, string name, out dynamic value)
         {
+            // attempt to find the first instance of the field with the same name
             FieldInfo info = obj.GetType().GetFields().FirstOrDefault(a => a.Name == name);
+            // set the out parameter to the resulting value of the field obtained
             value = info?.GetValue(obj);
+            // return if the field existed
             return info != null;
         }
 
@@ -270,22 +273,26 @@ namespace CharaReader
         /// If no <paramref name="end_offset"/> is given, reads until a 32bit value equals 0.
         /// Then sets <paramref name="description"/>.description to the bytes between <paramref name="start_offset"/> and <paramref name="end_offset"/>.
         /// </summary>
-        /// <typeparam name="T">The alignment type of this read. Must be a primitive type.</typeparam>
         /// <param name="data">The array of bytes to read from.</param>
         /// <param name="origin_offset">The original offset from the file of the first index in <paramref name="data"/>.</param>
         /// <param name="description">The description to set.</param>
         /// <param name="start_offset">The file offset referenced as the first index of this read.</param>
         /// <param name="end_offset">The file offset referenced as the last index of this read.</param>
+        /// <param name="alignment">The alignment of the strings. Defaults to int.</param>
         public static void ReadDescription_String(this byte[] data, int origin_offset, ref Description description, int start_offset, int? end_offset = null, int alignment = sizeof(int))
         {
+            // get the zero-index offset
             int offset = start_offset - origin_offset;
             int end;
+            // if the end_offset parameter is not null
             if (end_offset != null)
             {
                 end = end_offset.Value - origin_offset;
             }
+            // otherwise
             else
             {
+                // scan until a u32 value equals 0
                 for (end = offset; end < data.Length - sizeof(int); end += sizeof(int))
                 {
                     if (BitConverter.ToUInt32(data, end) == 0)
@@ -293,21 +300,30 @@ namespace CharaReader
                         break;
                     }
                 }
+                // if no 0 was found
                 if (end == data.Length - sizeof(int))
                 {
                     end = data.Length - 1;
                 }
             }
+            // set the description to the resulting array between offset and end
             description.description = data[offset..end];
+
+            /* So the process here is to start reading from 'offset' and stop reading at 'end'
+             * Every time it reads, it adds the current offset, then scans until the next 0 is found
+             * Once that happens, it loops back around, realigns the offset, and repeats
+             * This ensures we only ever append the starting index of each string found.
+             */
+            // from offset to end, realign
             for (; offset < end; offset += alignment - (offset % alignment))
             {
+                // add the current offset to the pointer array
                 Array.Resize(ref description.ptrs, description.ptrs.Length + 1);
-                // the offset is based on the original data length. this is intended.
-                // 0-index is description.ptrs[i] - description.ptrs[0]
-                // this assumes pointers exist to begin with.
                 description.ptrs[^1] = offset;
+                // while the offset is less than the end of the read
                 for (; offset < end; offset++)
                 {
+                    // if the current offset is 0, stop
                     if (data[offset] == 0)
                     {
                         break;
@@ -316,15 +332,26 @@ namespace CharaReader
             }
         }
 
+        /// <summary>
+        /// Reads the <paramref name="data"/> from the next 0x03 object. This 0x03 object is specifically designed to contain
+        /// arrays of data separated by a given value. The arrays are stored in the referenced <see cref="Description.description"/>.
+        /// And the start of each array is then appended to the referenced <see cref="Description.ptrs"/> array.
+        /// </summary>
+        /// <param name="data"></param>
+        /// <param name="origin_offset"></param>
+        /// <param name="description"></param>
+        /// <param name="start_offset"></param>
         public static void ReadDescription_Array(this byte[] data, int origin_offset, ref Description description, int start_offset, int? end_offset, dynamic separator, int alignment = sizeof(int))
         {
-            // get the 0-based-index to reference the data array
+            // get the starting point within the bounds of the given data array
             int offset = start_offset - origin_offset;
             int end;
+            // calculate the size of the separator
             int size = Size(separator);
+            // if the given end_offset is not null
             if (end_offset != null)
             {
-                // this results to a value within the bounds of the data array
+                // set the ending point within the bounds of the given data array
                 end = end_offset.Value - origin_offset;
             }
             else
@@ -332,25 +359,31 @@ namespace CharaReader
                 // if no end_offset is given, scan the array for the given separator
                 for (end = offset; end < data.Length - 1; end++)
                 {
+                    // if the separator is found
                     if (DynamicPeek(data, end, separator) == separator)
                     {
+                        // include it and break
                         end += size;
                         break;
                     }
                 }
             }
-            // append the data to the description array
+            // append the resulting data to the description array
             Array.Resize(ref description.description, description.description.Length + (end - offset));
             data[offset..end].CopyTo(description.description, description.description.Length - (end - offset));
+            // while the offset is less than the end, realign
             for (; offset < end; offset += alignment - (offset % alignment))
             {
+                // append the current offset
                 Array.Resize(ref description.ptrs, description.ptrs.Length + 1);
                 description.ptrs[^1] = offset;
+                // while the sum of the offset is less than the end, increment by one
                 for (; offset + alignment < end; offset++)
                 {
-                    dynamic value = DynamicPeek(data, offset, separator);
-                    if (value == separator)
+                    // peek at the data and compare with the given separator
+                    if (DynamicPeek(data, offset, separator) == separator)
                     {
+                        // if they are equal, include the separator and break
                         offset += size;
                         break;
                     }
@@ -363,10 +396,10 @@ namespace CharaReader
         /// raw 32bit values. These values are read and stored in <paramref name="description"/>. The data array in <paramref name="description"/>
         /// is completely ignored in this method.
         /// </summary>
-        /// <param name="data"></param>
-        /// <param name="origin_offset"></param>
-        /// <param name="description"></param>
-        /// <param name="start_offset"></param>
+        /// <param name="data">The array of bytes to read from.</param>
+        /// <param name="origin_offset">The original offset from the file of the first index in <paramref name="data"/>.</param>
+        /// <param name="description">The description to set.</param>
+        /// <param name="start_offset">The file offset referenced as the first index of this read.</param>
         public static void ReadDescription_Value(this byte[] data, int origin_offset, ref Description description, int start_offset)
         {
             int offset = start_offset - origin_offset;
@@ -384,10 +417,10 @@ namespace CharaReader
         /// offset pointers to indexes withing a following array of bytes. This method takes that array of bytes from <paramref name="data"/>
         /// and moves it to <paramref name="description"/> while also storing the offsets to each important index within the array.
         /// </summary>
-        /// <param name="data"></param>
-        /// <param name="origin_offset"></param>
-        /// <param name="description"></param>
-        /// <param name="start_offset"></param>
+        /// <param name="data">The array of bytes to read from.</param>
+        /// <param name="origin_offset">The original offset from the file of the first index in <paramref name="data"/>.</param>
+        /// <param name="description">The description to set.</param>
+        /// <param name="start_offset">The file offset referenced as the first index of this read.</param>
         public static void ReadDescription_PointerArray(this byte[] data, int origin_offset, ref Description description, int start_offset)
         {
             // zero the offset

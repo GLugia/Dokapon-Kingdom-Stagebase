@@ -7,8 +7,7 @@ namespace CharaReader.data
 {
     public class BAS
     {
-        public string base_data_start;
-        public string base_data_end;
+        public string[] file_labels;
         public byte[][] descriptions;
         public List<Action<byte[], int>> description_ptr_handlers;
         public Stage[] stages;
@@ -44,20 +43,16 @@ namespace CharaReader.data
             }
             length = reader.ReadInt32();
             reader.offset = reader.ReadInt32();
-            int table_id = reader.ReadInt32();
-            int end;
-            if (table_id == 0x01)
-            {
-                end = reader.ReadInt32();
-                base_data_start = reader.ReadString();
-                reader.offset = end;
-            }
 
+            file_labels = Array.Empty<string>();
             descriptions = Array.Empty<byte[]>();
             description_ptr_handlers = new();
             stages = Array.Empty<Stage>();
             unk_85 = new byte[2][];
             unk_AC = Array.Empty<Unk_AC>();
+
+            int table_id;
+            int end;
             dynamic item_id;
             int temp;
             int offset;
@@ -70,7 +65,8 @@ namespace CharaReader.data
                     case 0x01:
                         {
                             end = reader.ReadInt32();
-                            base_data_end = reader.ReadString();
+                            Array.Resize(ref file_labels, file_labels.Length + 1);
+                            file_labels[^1] = reader.ReadString();
                             reader.offset = end;
                             break;
                         }
@@ -312,9 +308,9 @@ namespace CharaReader.data
             writer.Write(0x30);
             writer.offset = 0x30;
 
-            writer.ReservePointer(0x01, "base_name_ptr");
-            writer.Write(base_data_start);
-            writer.WritePointer("base_name_ptr");
+            writer.ReservePointer(0x01, "label_ptr");
+            writer.Write(file_labels[0]);
+            writer.WritePointer("label_ptr");
 
             for (int i = 0; i < stages.Length; i++)
             {
@@ -481,9 +477,9 @@ namespace CharaReader.data
             writer.Write(0);
             writer.WritePointer("des_ptr");
 
-            writer.ReservePointer(0x01, "base_name_ptr");
-            writer.Write(base_data_end);
-            writer.WritePointer("base_name_ptr");
+            writer.ReservePointer(0x01, "label_ptr");
+            writer.Write(file_labels[1]);
+            writer.WritePointer("label_ptr");
 
             int offset = writer.offset;
             writer.offset += sizeof(int);

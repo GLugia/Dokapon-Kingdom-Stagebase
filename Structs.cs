@@ -1,4 +1,6 @@
-﻿namespace CharaReader
+﻿/* This class is unused but left here for reference
+ * 
+namespace CharaReader
 {
     internal static class Structs
     {
@@ -966,4 +968,4 @@
             this.value = value;
         }
     }
-}
+}*/
