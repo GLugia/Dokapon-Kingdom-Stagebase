@@ -304,20 +304,13 @@ namespace CharaReader
 		public static void ReadDescription_Value(this byte[] data, int origin_offset, ref Description description, int start_offset)
 		{
 			int offset = start_offset - origin_offset;
-			int end;
-			int temp_pointer;
-			for (end = offset; end < data.Length - sizeof(int); end++)
+			while (offset + sizeof(int) < data.Length)
 			{
-				temp_pointer = BitConverter.ToInt32(data, end);
-				if (temp_pointer == 0)
-				{
-					break;
-				}
 				Array.Resize(ref description.ptrs, description.ptrs.Length + 1);
-				description.ptrs[^1] = temp_pointer;
+				description.ptrs[^1] = offset;
 				offset += sizeof(int);
 			}
-			description.description = data[offset..end];
+			description.description = data;
 		}
 
 		/// <summary>
@@ -332,33 +325,35 @@ namespace CharaReader
 		public static void ReadDescription_PointerArray(this byte[] data, int origin_offset, ref Description description, int start_offset)
 		{
 			int offset = start_offset - origin_offset;
-			int end = origin_offset + data.Length;
+			int end = data.Length - 1;
 			int temp_pointer;
+			int[] different_pointers = Array.Empty<int>();
 			while (offset < end && (temp_pointer = BitConverter.ToInt32(data, offset)) != 0)
 			{
 				Array.Resize(ref description.ptrs, description.ptrs.Length + 1);
 				description.ptrs[^1] = temp_pointer - origin_offset;
+				if (Array.IndexOf(different_pointers, temp_pointer - origin_offset) == -1)
+                {
+					Array.Resize(ref different_pointers, different_pointers.Length + 1);
+					different_pointers[^1] = temp_pointer - origin_offset;
+                }
 				offset += sizeof(int);
 			}
-			int[] repeated_pointers = Array.Empty<int>();
-			for (int i = 0; i < description.ptrs.Length; i++)
+			for (int i = 0; i < different_pointers.Length - 1; i++)
 			{
-				if (Array.IndexOf(repeated_pointers, description.ptrs[i]) != -1)
-				{
-					continue;
-				}
-				offset = description.ptrs[i];
-				Array.Resize(ref repeated_pointers, repeated_pointers.Length + 1);
-				repeated_pointers[^1] = description.ptrs[i];
-				while (offset < end && data[offset] != 0xFF)
-				{
-					Array.Resize(ref description.description, description.description.Length + 1);
-					description.description[^1] = data[offset];
-					offset++;
-				}
-				Array.Resize(ref description.description, description.description.Length + 1);
-				description.description[^1] = 0xFF;
+				Array.Resize(ref description.description, description.description.Length + (different_pointers[i + 1] - different_pointers[i]));
+				data[different_pointers[i]..different_pointers[i + 1]].CopyTo(description.description, description.description.Length - (different_pointers[i + 1] - different_pointers[i]));
 			}
+			for (offset = different_pointers[^1]; offset < end; offset++)
+            {
+				if (data[offset] == 0xFF)
+                {
+					break;
+                }
+			}
+			offset++;
+			Array.Resize(ref description.description, description.description.Length + (offset - different_pointers[^1]));
+			data[different_pointers[^1]..offset].CopyTo(description.description, description.description.Length - (offset - different_pointers[^1]));
 		}
 
 		public static dynamic DynamicPeek<T>(byte[] data, int offset)

@@ -412,24 +412,19 @@ namespace CharaReader.data
 		/// </summary>
 		/// <param name="base_name">The base name of all pointers referencing this Description.</param>
 		/// <param name="description">The description to write.</param>
-		public void WriteDescriptions(string base_name, Description description)
+		/// <param name="origin_offset">The offset of the first byte in this 0x03 object.</param>
+		public void WriteDescriptions(string base_name, Description description, int origin_offset)
 		{
-			if (description.ptrs.Length <= 0)
+			if (description.description.Length <= 0)
 			{
 				return;
 			}
-			if (offset + description.description.Length - 1 > _data.Length - 1)
+			int real_offset = offset - origin_offset;
+			for (int i = 0; i < description.description.Length; i++)
 			{
-				Array.Resize(ref _data, offset + description.description.Length + 1);
+				WriteAllPointers(base_name, i + real_offset);
+				Write(description.description[i]);
 			}
-			int origin = offset;
-			for (int i = 0; i < description.ptrs.Length; i++)
-			{
-				offset = origin + description.ptrs[i];
-				WritePointer($"{base_name}_{i}_{description.ptrs[i]}");
-			}
-			offset = origin;
-			Write(description.description);
 		}
 
 		public void WriteDescriptions(string base_name, Description[] descriptions, dynamic separator)

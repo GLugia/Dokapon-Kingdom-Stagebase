@@ -378,7 +378,7 @@ namespace CharaReader.data
 							npc_enemy_models_0[item_id].item_id = item_id;
 							npc_enemy_models_0[item_id].f0 = reader.ReadString();
 							npc_enemy_models_0[item_id].fg0 = reader.ReadString();
-							npc_enemy_models_0[item_id].description = ReadDescription_PointerArray(reader, 0xFFFF, sizeof(ushort));
+							npc_enemy_models_0[item_id].description = ReadDescription_Array(reader, 0xFFFF, sizeof(ushort));
 							break;
 						}
 					case 0x5B: unk_5B = reader.ReadStructs<Unk_5B>(table_id); break;
@@ -400,8 +400,8 @@ namespace CharaReader.data
 							npc_models_0[item_id].f0 = reader.ReadString();
 							npc_models_0[item_id].k0 = reader.ReadString();
 							npc_models_0[item_id].fg0 = reader.ReadString();
-							npc_models_0[item_id].descriptions_0 = ReadDescription_PointerArray(reader, 0xFFFF, sizeof(ushort));
-							npc_models_0[item_id].descriptions_1 = ReadDescription_PointerArray(reader, 0xFFFF, sizeof(ushort));
+							npc_models_0[item_id].descriptions_0 = ReadDescription_Array(reader, 0xFFFF, sizeof(ushort));
+							npc_models_0[item_id].descriptions_1 = ReadDescription_Array(reader, 0xFFFF, sizeof(ushort));
 							break;
 						}
 					case 0x5D: unk_5D = reader.ReadStructs<Unk_5D>(table_id); break;
@@ -415,23 +415,29 @@ namespace CharaReader.data
 					case 0x4F:
 						{
 							temp = reader.ReadInt32();
-							unk_4F = ReadDescriptions3(temp);
+							unk_4F = ReadDescription_PointerArray(temp);
 							break;
 						}
 					case 0x4E: unk_4E = reader.ReadStructs<Unk_4E>(table_id); break;
 					case 0x4D:
 						{
 							temp = reader.ReadInt32(); // start_offset
-							unk_4D = ReadDescriptions3(temp);
+							unk_4D = ReadDescription_PointerArray(temp);
 							break;
 						}
 					case 0x76:
 						{
 							temp = reader.ReadInt32();
-							unk_76 = ReadDescriptions3(temp);
+							unk_76 = ReadDescription_Value(temp);
 							break;
 						}
-					case 0x77: finished = true; break;
+					case 0x77:
+                        {
+							temp = reader.ReadInt32();
+							unk_77 = ReadDescription_PointerArray(temp);
+							break;
+                        }
+					case 0xE2: finished = true; break;
 					default: throw new Exception($"Unhandled table {(reader.offset - sizeof(int)).ToHexString()}->{((byte)table_id).ToHexString()}");
 				}
 			}
@@ -449,8 +455,19 @@ namespace CharaReader.data
 			return ret;
 		}
 
+		private Description ReadDescription_Value(int start_offset)
+		{
+			Description ret = new()
+			{
+				ptrs = Array.Empty<int>(),
+				description = Array.Empty<byte>()
+			};
+			description_ptr_handlers.Add((a, b) => Utils.ReadDescription_Value(a, b, ref ret, start_offset));
+			return ret;
+		}
+
 		// Reads an array of ordered pointers separated by a 32bit boolean value
-		private Description ReadDescription_PointerArray(DataReader reader, dynamic separator, int alignment = sizeof(int))
+		private Description ReadDescription_Array(DataReader reader, dynamic separator, int alignment = sizeof(int))
 		{
 			Description ret = new()
 			{
@@ -478,7 +495,7 @@ namespace CharaReader.data
 			return ret;
 		}
 
-		private Description ReadDescriptions3(int start_offset)
+		private Description ReadDescription_PointerArray(int start_offset)
 		{
 			Description ret = new()
 			{
@@ -782,37 +799,49 @@ namespace CharaReader.data
 			writer.ReservePointer(0x03, "des_end_ptr");
 			writer.Write(0);
 			int origin_offset = writer.offset;
+
 			writer.WritePointer("4D_ptrs");
 			for (int i = 0; i < unk_4D.ptrs.Length; i++)
 			{
-				// include the index of the pointer to avoid errors
-				// all duplicates will be properly handled
 				writer.ReservePointerNoID($"4D_ptrs_{i}_{unk_4D.ptrs[i]}");
 			}
 			writer.offset += sizeof(int) - (writer.offset % sizeof(int));
-			for (int i = 0; i < unk_4D.description.Length; i++)
-			{
-				writer.WriteAllPointers("4D_ptrs", writer.offset - origin_offset);
-				writer.Write(unk_4D.description[i]);
-			}
+			writer.WriteDescriptions("4D_ptrs", unk_4D, origin_offset);
 			writer.offset += sizeof(int) - (writer.offset % sizeof(int));
-
+			
 			writer.WritePointer("4F_ptrs");
 			for (int i = 0; i < unk_4F.ptrs.Length; i++)
 			{
 				writer.ReservePointerNoID($"4F_ptrs_{i}_{unk_4F.ptrs[i]}");
 			}
 			writer.offset += sizeof(int) - (writer.offset % sizeof(int));
-			for (int i = 0; i < unk_4F.description.Length; i++)
-			{
-				writer.WriteAllPointers("4F_ptrs", writer.offset - origin_offset);
-				writer.Write(unk_4F.description[i]);
-			}
+			writer.WriteDescriptions("4F_ptrs", unk_4F, origin_offset);
 			writer.offset += sizeof(int) - (writer.offset % sizeof(int));
 
 			writer.WritePointer("des_end_ptr");
+
+			writer.ReservePointer(0x76, "76_ptr");
+			writer.ReservePointer(0x03, "des_end_ptr");
+			writer.Write(0);
+			writer.WritePointer("76_ptr");
+			writer.Write(unk_76.description);
+			writer.WritePointer("des_end_ptr");
 			
-			// more goes here
+			writer.ReservePointer(0x77, "77_ptr_start");
+			writer.ReservePointer(0x03, "des_end_ptr");
+			writer.Write(0);
+			origin_offset = writer.offset;
+			writer.WritePointer("77_ptr_start");
+			for (int i = 0; i < unk_77.ptrs.Length; i++)
+            {
+				writer.ReservePointerNoID($"77_ptrs_{i}_{unk_77.ptrs[i]}");
+			}
+			writer.Write(0);
+			writer.Write(0);
+			writer.WriteDescriptions("77_ptrs", unk_77, origin_offset);
+			writer.WritePointer("des_end_ptr");
+			
+			/* more goes here */
 
 			writer.WritePointer("chr_file_len_ptr");
 		}
