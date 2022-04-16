@@ -275,7 +275,6 @@ namespace CharaReader
 			// append the data to the description array
 			Array.Resize(ref description.description, description.description.Length + (end - offset));
 			data[offset..end].CopyTo(description.description, description.description.Length - (end - offset));
-			Console.Out.WriteLine($"{offset.ToHexString()}:{end.ToHexString()}->{start_offset.ToHexString()}:{(end + origin_offset).ToHexString()}");
 			for (; offset < end; offset += alignment - (offset % alignment))
 			{
 				Array.Resize(ref description.ptrs, description.ptrs.Length + 1);

@@ -16,6 +16,10 @@ namespace CharaReader.data
 		public int length => _data?.Length ?? -1;
 		private Dictionary<string, Pointer> reserved_offsets;
 
+		/// <summary>
+		/// Initializes the necessary fields for creating a new instance of <see cref="DataWriter"/>.
+		/// </summary>
+		/// <param name="file">The file to read from.</param>
 		public DataWriter(string file)
 		{
 			_file = file;
@@ -24,28 +28,40 @@ namespace CharaReader.data
 			reserved_offsets = new();
 		}
 
+		/// <summary>
+		/// Close this reader.
+		/// </summary>
 		public void Close()
 		{
+			// align the data to 16
 			if (_data.Length % 16 != 0)
 			{
 				Array.Resize(ref _data, _data.Length + (16 - (_data.Length % 16)));
 			}
+			// write the data to file
 			File.WriteAllBytes(_file, _data);
+			// null the file name
 			_file = null;
+			// zero the offset
 			offset = 0;
+			// clear any reserved offsets
 			reserved_offsets.Clear();
+			// null the list
 			reserved_offsets = null;
+			// null the data
 			_data = null;
 		}
 
+		/// <summary>
+		/// Handles writing primitive objects that may not be immediately known. ie dynamics.
+		/// </summary>
+		/// <param name="val">The value to write.</param>
+		/// <param name="alignment">The alignment of the data.</param>
+		/// <exception cref="Exception">If <paramref name="val"/> is not a primitive type.</exception>
 		public void Write(object val, int alignment = sizeof(int))
 		{
 			switch (val)
 			{
-				case null:
-					{
-						break;
-					}
 				case bool:
 					{
 						Write((bool)val);
@@ -116,6 +132,8 @@ namespace CharaReader.data
 						Write((float)val);
 						break;
 					}
+				// if it's null or unhandled, throw an error
+				case null:
 				default:
 					{
 						throw new Exception($"Unhandled type: {val.GetType()}::{val}");
@@ -123,16 +141,27 @@ namespace CharaReader.data
 			}
 		}
 
+		/// <summary>
+		/// Writes a b8 value to the buffer.
+		/// </summary>
+		/// <param name="val">The value to write to the buffer.</param>
 		public void Write(bool val)
 		{
+			// if the offset is larger than the length, resize to fit
 			if (offset > data.Length - 1)
 			{
 				Array.Resize(ref _data, offset + 1);
 			}
+			// set the value at the current offset to the value given
 			_data[offset] = (byte)(val ? 1 : 0);
+			// increment the offset
 			offset++;
 		}
 
+		/// <summary>
+		/// Writes a char value to the buffer.
+		/// </summary>
+		/// <param name="val">The value to write to the buffer.</param>
 		public void Write(char val)
 		{
 			if (offset > _data.Length - 1)
@@ -143,6 +172,10 @@ namespace CharaReader.data
 			offset++;
 		}
 
+		/// <summary>
+		/// Writes an array of chars to the buffer.
+		/// </summary>
+		/// <param name="val">The array to write to the buffer.</param>
 		public void Write(char[] val)
 		{
 			if (offset + val.Length > _data.Length - 1)
@@ -153,6 +186,11 @@ namespace CharaReader.data
 			offset += val.Length;
 		}
 
+		/// <summary>
+		/// Writes a string to the buffer.
+		/// </summary>
+		/// <param name="val">The value to write to the buffer.</param>
+		/// <param name="alignment">The alignment of this data.</param>
 		public void Write(string val, int alignment = sizeof(int))
 		{
 			byte[] data = Program.shift_jis.GetBytes(val);
@@ -164,6 +202,10 @@ namespace CharaReader.data
 			offset += data.Length + (offset % alignment);
 		}
 
+		/// <summary>
+		/// Writes an s8 to the buffer.
+		/// </summary>
+		/// <param name="val">The value to write to the buffer.</param>
 		public void Write(sbyte val)
 		{
 			if (offset > _data.Length - 1)
@@ -174,6 +216,10 @@ namespace CharaReader.data
 			offset++;
 		}
 
+		/// <summary>
+		/// Writes a u8 to the buffer.
+		/// </summary>
+		/// <param name="val">The value to write to the buffer.</param>
 		public void Write(byte val)
 		{
 			if (offset > _data.Length - 1)
@@ -184,6 +230,10 @@ namespace CharaReader.data
 			offset++;
 		}
 
+		/// <summary>
+		/// Writes a u8 array to the buffer.
+		/// </summary>
+		/// <param name="val">The value to write to the buffer.</param>
 		public void Write(byte[] val)
 		{
 			if (offset + val.Length > _data.Length - 1)
@@ -194,6 +244,11 @@ namespace CharaReader.data
 			offset += val.Length;
 		}
 
+		/// <summary>
+		/// Writes a span of 
+		/// </summary>
+		/// <typeparam name="T"></typeparam>
+		/// <param name="val"></param>
 		public void Write<T>(Span<T> val)
 		{
 			if (offset + val.Length > _data.Length - 1)
@@ -427,6 +482,12 @@ namespace CharaReader.data
 			}
 		}
 
+		/// <summary>
+		/// Writes an array of <see cref="Description"/>s separated by <paramref name="separator"/> to the buffer.
+		/// </summary>
+		/// <param name="base_name">The start of the names of pointers refering to this array of <see cref="Description"/>s</param>
+		/// <param name="descriptions">The <see cref="Description"/> array to write to the buffer.</param>
+		/// <param name="separator">The primitive value to write between each object. (ie. 0xFF or '\0')</param>
 		public void WriteDescriptions(string base_name, Description[] descriptions, dynamic separator)
 		{
 			byte[] total = Array.Empty<byte>();
@@ -471,7 +532,7 @@ namespace CharaReader.data
 		}
 
 		/// <summary>
-		/// Handles writing the stored byte array in a Description
+		/// Handles writing the stored byte array in a <see cref="Description"/>.
 		/// </summary>
 		/// <param name="description">The Description to write.</param>
 		public void WriteDescriptions(Description description)
@@ -483,18 +544,37 @@ namespace CharaReader.data
 			Write(description.description);
 		}
 
+		/// <summary>
+		/// Writes an id to file, gives it a name, then reserves 4 bytes per <paramref name="count"/>.
+		/// Offsets can be written to this named pointer as many times as <paramref name="count"/> allows.
+		/// Once <paramref name="count"/> is reached, it's removed from the <see cref="reserved_offsets"/> list.
+		/// </summary>
+		/// <param name="id">The id of this object to write to file.</param>
+		/// <param name="name">The name of this pointer.</param>
+		/// <param name="count">The amount of reservations to make.</param>
 		public void ReservePointer(dynamic id, string name, int count = 1)
 		{
+			// write the id immediately
 			Write(id);
+			// reserve a new pointer
 			reserved_offsets.Add(name, new Pointer
 			{
+				// mark the offset
 				offset = offset,
+				// init the index to 0
 				index = 0,
+				// set the count
 				count = count
 			});
+			// skip the next 4 bytes per count
 			offset += count * sizeof(int);
 		}
 
+		/// <summary>
+		/// Reserves a pointer similar to <see cref="ReservePointer(dynamic, string, int)"/> without writing an id.
+		/// </summary>
+		/// <param name="name">The name of this pointer.</param>
+		/// <param name="count">The amoutn of reservations to make.</param>
 		public void ReservePointerNoID(string name, int count = 1)
 		{
 			reserved_offsets.Add(name, new Pointer
@@ -506,6 +586,12 @@ namespace CharaReader.data
 			offset += count * sizeof(int);
 		}
 
+		/// <summary>
+		/// Reserves an array of pointers separated by a 32bit boolean and an array id. Reserves in a specific style:
+		/// "<paramref name="name"/>_X_<paramref name="ptrs"/>[X]" where 'X' is the current index of the <paramref name="ptrs"/>.
+		/// </summary>
+		/// <param name="name">The name of this pointer.</param>
+		/// <param name="ptrs">The array of pointers to reserve.</param>
 		public void ReservePointerArray(string name, int[] ptrs)
 		{
 			for (int i = 0; i < ptrs.Length; i++)
@@ -523,23 +609,43 @@ namespace CharaReader.data
 			Write(0);
 		}
 
+		/// <summary>
+		/// Writes the current offset to the target named pointer's next available index.
+		/// </summary>
+		/// <param name="name">The name of the pointer to write to.</param>
+		/// <param name="remove">Whether or not you wish to remove this pointer. Even if its lifespan is finished.</param>
+		/// <exception cref="KeyNotFoundException">No pointer of the target name was found.</exception>
 		public void WritePointer(string name, bool remove = true)
 		{
 			if (!reserved_offsets.TryGetValue(name, out Pointer ptr))
 			{
 				throw new KeyNotFoundException($"No pointer of name '{name}' was found.");
 			}
+			// mark the current offset
 			int temp_offset = offset;
+			// set the offset to the sum of the pointer's marked offset and the index
 			offset = ptr.offset + (ptr.index * sizeof(int));
+			// increment the index early
 			ptr.index++;
+			// if we can remove this pointer and its index is larger than its count
 			if (remove && ptr.index > ptr.count - 1)
 			{
+				// remove it
 				reserved_offsets.Remove(name);
 			}
+			// write the marked offset
 			Write(temp_offset);
+			// jump back to the marked offset
 			offset = temp_offset;
 		}
 
+		/// <summary>
+		/// This is entirely unused but I'm leaving it here just in case it's ever useful. It simply writes the <paramref name="forced_offset"/>
+		/// to the target named pointer.
+		/// </summary>
+		/// <param name="name"></param>
+		/// <param name="forced_offset"></param>
+		/// <exception cref="KeyNotFoundException"></exception>
 		public void ForcePointer(string name, int forced_offset)
 		{
 			if (!reserved_offsets.TryGetValue(name, out Pointer ptr))
@@ -557,6 +663,14 @@ namespace CharaReader.data
 			offset = temp_offset;
 		}
 
+		/// <summary>
+		/// Writes the <paramref name="id"/> and <see cref="offset"/> to the target named pointer's next available index. Pointers reserved should reserve 2
+		/// indexes each before using this method.
+		/// </summary>
+		/// <param name="name">The name of the pointer to write to.</param>
+		/// <param name="id">The id to give this pointer.</param>
+		/// <param name="remove">Whether or not you wish to remove this pointer. Even if its lifespan is finished.</param>
+		/// <exception cref="KeyNotFoundException">No pointer of the target name was found.</exception>
 		public void WritePointerID(string name, dynamic id, bool remove = true)
 		{
 			if (!reserved_offsets.TryGetValue(name, out Pointer ptr))
@@ -576,10 +690,22 @@ namespace CharaReader.data
 		}
 	}
 
+	/// <summary>
+	/// A class used in reserving specific offsets for marking offset positions.
+	/// </summary>
 	public class Pointer
 	{
+		/// <summary>
+		/// The origin offset of this pointer.
+		/// </summary>
 		public int offset;
+		/// <summary>
+		/// The current index of this pointer. (<see cref="offset"/> + (<see cref="index"/> * sizeof(int))
+		/// </summary>
 		public int index;
+		/// <summary>
+		/// The amount of offsets reserved.
+		/// </summary>
 		public int count;
 	}
 }

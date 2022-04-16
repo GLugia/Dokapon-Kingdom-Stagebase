@@ -113,21 +113,36 @@ namespace CharaReader.data
 
 		public int length;
 
+		/// <summary>
+		/// A class for containing character related data.
+		/// </summary>
+		/// <param name="reader">The DataReader instance to use for reading.</param>
+		/// <exception cref="Exception">If the <paramref name="reader"/> is not specifically meant for this file.</exception>
 		public CHR(DataReader reader)
 		{
+			// read the first 4 bytes as char values
 			string name = string.Join("", reader.ReadChars(4));
+			// if they do not equal @CHR, throw an exception
 			if (name != "@CHR")
 			{
 				throw new Exception($"Expected '@CHR' got {name}");
 			}
+			// read the length of this file
 			length = reader.ReadInt32();
+			// jump to the offset listed after the length (0x30)
 			reader.offset = reader.ReadInt32();
+			// read the first table_id. it should be 0x01.
+			// TODO: Handle 0x01 in the switch block
 			int table_id = reader.ReadInt32();
 			int end;
+			// this will always be true
 			if (table_id == 0x01)
 			{
+				// read the pointer to the end of the data
 				end = reader.ReadInt32();
+				// read the string naming this section
 				class_data_start = reader.ReadString();
+				// jump to the end of the data
 				reader.offset = end;
 			}
 
@@ -143,27 +158,52 @@ namespace CharaReader.data
 			int temp;
 			int offset;
 			bool finished = false;
+			// while finished is false and the offset is lower than the length
 			while (!finished && reader.offset < reader.length)
 			{
+				// read the next table_id
 				table_id = reader.ReadInt32();
+				// according to the table_id's value, jump
 				switch (table_id)
 				{
 					case 0x03:
 						{
-							end = reader.ReadInt32(); // this is technically a long int value but the highest 8 bits are always 0
+							// read the pointer to the end of the data
+							end = reader.ReadInt32();
+							// skip the 0
 							reader.ReadUInt32();
+							// mark the current offset
+							// it's used as the 'origin' offset of the data
+							// essentially 'origin' means the offset of the first byte in an array
 							offset = reader.offset;
+							// read all bytes from the current offset to the end pointer
 							byte[] description = reader.ReadBytes(end - reader.offset);
+
+							/* this is where things get complicated.
+							 * this object can be handled 4 different ways so far. none of which are obvious.
+							 * due to this, we have to handle things a little different than with other table_ids.
+							 * here, we iterate over all actions in the list and invoke each one. typically this
+							 * will only invoke one or two actions but there are cases where it may invoke tons.
+							 * more will be explained about this as we go on.
+							 */
 							foreach (Action<byte[], int> action in description_ptr_handlers)
 							{
+								// invoke the action using the buffered bytes from description and the origin offset
 								action.Invoke(description, offset);
 							}
+							// clear all actions
 							description_ptr_handlers.Clear();
 							break;
 						}
 					#region Weapon Data
+						// handle the next 0x03 object, from 'a' to 'b', as a string array
 					case 0x5A: weapon_descriptions = ReadDescription_String(reader.ReadInt32(), reader.ReadInt32()); break;
+						// handle the next 0x03 object, from 'a' to 'b', as a string array
+						// i properly name the parameters according to what they're used for so i won't be using the
+						// "from 'a' to 'b'" shit anymore
 					case 0x63: weapon_bonus_descriptions = ReadDescription_String(reader.ReadInt32(), reader.ReadInt32()); break;
+						// read the weapons directly as structs. this function explains how it works and what it does.
+						// i will not be commenting these objects as they're literally everywhere.
 					case 0x58: weapons = reader.ReadStructs<Weapon>(table_id); break;
 					case 0x59: weapon_models = reader.ReadStructs<WeaponModel>(table_id); break;
 					#endregion
@@ -199,18 +239,24 @@ namespace CharaReader.data
 					case 0x72: magic_def = reader.ReadStructs<Magic>(table_id); break;
 					case 0x75: magic_item_descriptions = ReadDescription_String(reader.ReadInt32(), reader.ReadInt32()); break;
 					case 0x74: magic_items = reader.ReadStructs<MagicItem>(table_id); break;
+						// TODO: this value is extremely out of place. no idea why it's here or what purpose it serves.
 					case 0x9F: magic_unk_9f = reader.ReadInt32(); break;
 					case 0xD1: magic_unk_d1 = reader.ReadStructs<MagicUnk_D1>(table_id); break;
 					case 0xD4:
 						{
+							// ignore the name, it's simply reading a value telling the size of the array to read
 							item_id = reader.ReadInt32();
+							// the offset after re-aligning
 							end = reader.ReadInt32();
+							// read the bytes
 							magic_unk_d4 = reader.ReadBytes(item_id);
+							// jump to a the end of this object
 							reader.offset = end;
 							break;
 						}
 					case 0xD5:
 						{
+							// same as 0xD4
 							item_id = reader.ReadInt32();
 							end = reader.ReadInt32();
 							magic_unk_d5 = reader.ReadBytes(item_id);
@@ -239,34 +285,46 @@ namespace CharaReader.data
 					case 0x29: job_model_4_7s = reader.ReadStructs2<JobModel_4_7>(table_id); break;
 					case 0x43: job_unk_43 = reader.ReadStructs2<JobUnk_43>(table_id); break;
 					case 0x38: job_unk_38 = reader.ReadStructs2<JobUnk_38>(table_id); break;
-					case 0x39:
+					case 0x39: // reads to 0xFFFF
 						{
-							// reads to 0xFFFF
+							// read the item id
 							item_id = reader.ReadInt32();
+							// if the item id is larger than the array can hold
 							if (item_id > job_unk_39.Length - 1)
 							{
+								// resize the array to allow it
 								Array.Resize(ref job_unk_39, item_id + 1);
+								// init the array
 								job_unk_39[item_id] = Array.Empty<ushort>();
 							}
+							// read the pointer
 							temp = reader.ReadInt32();
+							// store the current offset
 							offset = reader.offset;
+							// jump to the previous pointer
 							reader.offset = temp;
+							// this is almost always true. left here just in case.
 							while (reader.offset < reader.length)
 							{
+								// read and append the next bytes as u16
 								Array.Resize(ref job_unk_39[item_id], job_unk_39[item_id].Length + 1);
 								job_unk_39[item_id][^1] = reader.ReadUInt16();
+								// if the last u16 is the max value it can contain
 								if (job_unk_39[item_id][^1] == ushort.MaxValue)
 								{
+									// skip the 0
 									reader.ReadInt16();
+									// and stop reading
 									break;
 								}
 							}
+							// return to the previous offset from before we jumped to the pointer offset
 							reader.offset = offset;
 							break;
 						}
 					case 0x8F:
 						{
-							// reads to 0xFFFF
+							// exactly the same as 0x39
 							item_id = reader.ReadInt32();
 							if (item_id > job_unk_8F.Length - 1)
 							{
@@ -292,6 +350,8 @@ namespace CharaReader.data
 					#endregion
 					default:
 						{
+							// we stop here cuz 0x01 is labeled multiple times but handling it is kind of annoying
+							// i'll fix it later i guess
 							reader.offset -= sizeof(int);
 							finished = true;
 							break;
@@ -299,7 +359,9 @@ namespace CharaReader.data
 				}
 			}
 
+			// we aren't done
 			finished = false;
+			// read the 0x01 object
 			table_id = reader.ReadInt32();
 			if (table_id == 0x01)
 			{
@@ -308,6 +370,7 @@ namespace CharaReader.data
 				reader.offset = end;
 			}
 
+			// back to work
 			while (!finished && reader.offset < reader.length)
 			{
 				table_id = reader.ReadInt32();
@@ -315,7 +378,8 @@ namespace CharaReader.data
 				{
 					case 0x03:
 						{
-							end = reader.ReadInt32(); // this is technically a 64bit value but the highest 8 bits are always 0
+							// i already commented this before. if you still have questions about it, read through DataReader and DataWriter.
+							end = reader.ReadInt32();
 							reader.ReadUInt32();
 							offset = reader.offset;
 							Array.Resize(ref descriptions, descriptions.Length + 1);
@@ -346,8 +410,11 @@ namespace CharaReader.data
 						}
 					case 0x8C:
 						{
+							// read the pointer marking the end of this data
 							end = reader.ReadInt32();
+							// init the array
 							unk_8C = Array.Empty<ushort>();
+							// read u16 values until we reach the end
 							while (reader.offset < end)
 							{
 								Array.Resize(ref unk_8C, unk_8C.Length + 1);
@@ -357,8 +424,11 @@ namespace CharaReader.data
 						}
 					case 0x3A:
 						{
+							// listed as male then female but in separate ids
 							Array.Resize(ref npc_names, npc_names.Length + 1);
+							// skip the listed item_id. it isn't necessary.
 							reader.ReadInt32();
+							// read, from the next 0x03 object, a string array starting at the s32 value and aligned to 2
 							npc_names[^1] = ReadDescription_String(reader.ReadInt32(), alignment: sizeof(ushort));
 							break;
 						}
@@ -370,14 +440,18 @@ namespace CharaReader.data
 					case 0x51: npc_enemy_models = reader.ReadStructs<NPCEnemyModel>(table_id); break;
 					case 0x61:
 						{
+							// read the item_id
 							item_id = reader.ReadInt32();
+							// resize to fit the item_id
 							if (item_id > npc_enemy_models_0.Length - 1)
 							{
 								Array.Resize(ref npc_enemy_models_0, item_id + 1);
 							}
+							// set the struct data
 							npc_enemy_models_0[item_id].item_id = item_id;
 							npc_enemy_models_0[item_id].f0 = reader.ReadString();
 							npc_enemy_models_0[item_id].fg0 = reader.ReadString();
+							// read, from the next 0x03 object, an array of values separated by 0xFFFF and aligned to 2
 							npc_enemy_models_0[item_id].description = ReadDescription_Array(reader, 0xFFFF, sizeof(ushort));
 							break;
 						}
@@ -407,54 +481,52 @@ namespace CharaReader.data
 					case 0x5D: unk_5D = reader.ReadStructs<Unk_5D>(table_id); break;
 					case 0x2A: unk_2A = reader.ReadStructs<Unk_5D>(table_id); break;
 
+						// TODO: another out of place s32 value
 					case 0x2C: unk_2C = reader.ReadInt32(); break;
 					case 0x2D: unk_2D = reader.ReadStructs<Unk_2D>(table_id); break;
 					case 0x9D: unk_9D = reader.ReadStructs<Unk_9D>(table_id); break;
 					case 0x9C: unk_9C = reader.ReadStructs<Unk_9D>(table_id); break;
 					case 0xE1: unk_E1 = reader.ReadStructs<Unk_E1>(table_id); break;
-					case 0x4F:
-						{
-							temp = reader.ReadInt32();
-							unk_4F = ReadDescription_PointerArray(temp);
-							break;
-						}
+						// read, from the next 0x03 object, an array of pointers, then an array of data following those pointers
+					case 0x4F: unk_4F = ReadDescription_PointerArray(reader.ReadInt32()); break;
 					case 0x4E: unk_4E = reader.ReadStructs<Unk_4E>(table_id); break;
-					case 0x4D:
-						{
-							temp = reader.ReadInt32(); // start_offset
-							unk_4D = ReadDescription_PointerArray(temp);
-							break;
-						}
-					case 0x76:
-						{
-							temp = reader.ReadInt32();
-							unk_76 = ReadDescription_Value(temp);
-							break;
-						}
-					case 0x77:
-                        {
-							temp = reader.ReadInt32();
-							unk_77 = ReadDescription_PointerArray(temp);
-							break;
-                        }
+					case 0x4D: unk_4D = ReadDescription_PointerArray(reader.ReadInt32()); break;
+						// read, from the next 0x03 object, an array of raw s32 values
+					case 0x76: unk_76 = ReadDescription_Value(reader.ReadInt32()); break;
+					case 0x77: unk_77 = ReadDescription_PointerArray(reader.ReadInt32()); break;
 					case 0xE2: finished = true; break;
 					default: throw new Exception($"Unhandled table {(reader.offset - sizeof(int)).ToHexString()}->{((byte)table_id).ToHexString()}");
 				}
 			}
 		}
 
-		// Reads a pointer declaring a starting and ending offset
+		/// <summary>
+		/// Allocates a new <see cref="Description"/> class then adds <seealso cref="Utils.ReadDescription_String(byte[], int, ref Description, int, int?, int)"/>
+		/// to the 0x03 handler list.
+		/// </summary>
+		/// <param name="start_offset">The offset to start reading from.</param>
+		/// <param name="end_offset">The offset to stop reading at.</param>
+		/// <param name="alignment">The alignment of this set of data. Defaults to int.</param>
+		/// <returns></returns>
 		private Description ReadDescription_String(int start_offset, int? end_offset = null, int alignment = sizeof(int))
 		{
+			// allocate a new Description class
 			Description ret = new()
 			{
 				ptrs = Array.Empty<int>(),
 				description = Array.Empty<byte>()
 			};
+			// create a new handler that references the Description class so we can modify its data in post
 			description_ptr_handlers.Add((a, b) => Utils.ReadDescription_String(a, b, ref ret, start_offset, end_offset, alignment));
 			return ret;
 		}
 
+		/// <summary>
+		/// Allocates a new <see cref="Description"/> class and adds <seealso cref="Utils.ReadDescription_Value(byte[], int, ref Description, int)"/>
+		/// to the 0x03 handler list.
+		/// </summary>
+		/// <param name="start_offset">The offset to start reading from.</param>
+		/// <returns></returns>
 		private Description ReadDescription_Value(int start_offset)
 		{
 			Description ret = new()
@@ -466,15 +538,22 @@ namespace CharaReader.data
 			return ret;
 		}
 
-		// Reads an array of ordered pointers separated by a 32bit boolean value
+		/// <summary>
+		/// Allocates a new <see cref="Description"/> class. Then, while the next s32 value is not 0, adds
+		/// <seealso cref="Utils.ReadDescription_Array(byte[], int, ref Description, int, int?, dynamic, int)"/> to the 0x03 handler list.
+		/// </summary>
+		/// <param name="reader">The current <see cref="DataReader"/> instance.</param>
+		/// <param name="separator">A primitive value of any type that would be used to separate arrays of bytes (0xFF or '\0' for instance)</param>
+		/// <param name="alignment">The alignment of this set of data. Defaults to int.</param>
+		/// <returns></returns>
 		private Description ReadDescription_Array(DataReader reader, dynamic separator, int alignment = sizeof(int))
 		{
+			// allocate a Description class to return later
 			Description ret = new()
 			{
 				ptrs = Array.Empty<int>(),
 				description = Array.Empty<byte>()
 			};
-			int origin = reader.offset;
 			// while there is another ordered pointer
 			while (reader.ReadInt32() != 0)
 			{
@@ -483,18 +562,17 @@ namespace CharaReader.data
 				// read the starting offset
 				int start_offset = reader.ReadInt32();
 				// create a new action for the 0x03 object to invoke
-				description_ptr_handlers.Add(new(delegate (byte[] a, int b)
-				{
-					if (start_offset - b == 0)
-					{
-						Console.Out.WriteLine($"Repeated instance at {origin.ToHexString()}");
-					}
-					Utils.ReadDescription_Array(a, b, ref ret, start_offset, null, separator, alignment);
-				}));
+				description_ptr_handlers.Add((a, b) => Utils.ReadDescription_Array(a, b, ref ret, start_offset, null, separator, alignment));
 			}
 			return ret;
 		}
 
+		/// <summary>
+		/// Allocates a new <see cref="Description"/> class and adds
+		/// <seealso cref="Utils.ReadDescription_PointerArray(byte[], int, ref Description, int)"/> to the 0x03 handler list.
+		/// </summary>
+		/// <param name="start_offset">The offset to start reading from.</param>
+		/// <returns></returns>
 		private Description ReadDescription_PointerArray(int start_offset)
 		{
 			Description ret = new()
@@ -506,6 +584,10 @@ namespace CharaReader.data
 			return ret;
 		}
 
+		/// <summary>
+		/// Handles writing all data contained in this class to the current <see cref="DataWriter"/> instance.
+		/// </summary>
+		/// <param name="writer">The <see cref="DataWriter"/> instance to write to.</param>
 		public void Write(DataWriter writer)
 		{
 			writer.ReservePointer(0x52484340, "chr_file_len_ptr");
