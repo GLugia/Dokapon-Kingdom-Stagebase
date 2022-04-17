@@ -279,7 +279,7 @@ namespace CharaReader
         /// <param name="start_offset">The file offset referenced as the first index of this read.</param>
         /// <param name="end_offset">The file offset referenced as the last index of this read.</param>
         /// <param name="alignment">The alignment of the strings. Defaults to int.</param>
-        public static void ReadDescription_String(this byte[] data, int origin_offset, ref Description description, int start_offset, int? end_offset = null, int alignment = sizeof(int))
+        public static void ReadDescription_StringArray(this byte[] data, int origin_offset, ref Description description, int start_offset, int? end_offset = null, int alignment = sizeof(int))
         {
             // get the zero-index offset
             int offset = start_offset - origin_offset;
@@ -293,7 +293,7 @@ namespace CharaReader
             else
             {
                 // scan until a u32 value equals 0
-                for (end = offset; end < data.Length - sizeof(int); end += sizeof(int))
+                for (end = offset; end + sizeof(int) < data.Length - 1; end += sizeof(int))
                 {
                     if (BitConverter.ToUInt32(data, end) == 0)
                     {
@@ -301,7 +301,7 @@ namespace CharaReader
                     }
                 }
                 // if no 0 was found
-                if (end == data.Length - sizeof(int))
+                if (end + sizeof(int) >= data.Length - 1)
                 {
                     end = data.Length - 1;
                 }
@@ -310,12 +310,13 @@ namespace CharaReader
             description.description = data[offset..end];
 
             /* So the process here is to start reading from 'offset' and stop reading at 'end'
-             * Every time it reads, it adds the current offset, then scans until the next 0 is found
+             * Every time it reads, it adds the current offset to the array of pointers.
+             * Then scans until the next 0 is found.
              * Once that happens, it loops back around, realigns the offset, and repeats
              * This ensures we only ever append the starting index of each string found.
              */
             // from offset to end, realign
-            for (; offset < end; offset += alignment - (offset % alignment))
+            for (; offset + (alignment - (offset % alignment)) < end; offset += alignment - (offset % alignment))
             {
                 // add the current offset to the pointer array
                 Array.Resize(ref description.ptrs, description.ptrs.Length + 1);
@@ -330,6 +331,37 @@ namespace CharaReader
                     }
                 }
             }
+        }
+
+        public static void ReadDescription_String(this byte[] data, int origin_offset, ref Description description, int start_offset, int? end_offset = null, int alignment = sizeof(int))
+        {
+            // get the zero-index offset
+            int offset = start_offset - origin_offset;
+            int end;
+            // if the end_offset parameter is not null
+            if (end_offset != null)
+            {
+                end = end_offset.Value - origin_offset;
+            }
+            // otherwise
+            else
+            {
+                // scan until a u8 value is 0
+                for (end = offset; end < data.Length - 1; end++)
+                {
+                    if (data[end] == 0)
+                    {
+                        break;
+                    }
+                }
+                end += alignment - (end % alignment);
+            }
+            // set the description to the resulting array between offset and end
+            Array.Resize(ref description.description, description.description.Length + (end - offset));
+            data[offset..end].CopyTo(description.description, description.description.Length - (end - offset));
+            Console.Out.WriteLine(Program.shift_jis.GetString(data[offset..end]));
+            Array.Resize(ref description.ptrs, description.ptrs.Length + 1);
+            description.ptrs[^1] = offset;
         }
 
         /// <summary>
@@ -377,7 +409,7 @@ namespace CharaReader
                 // append the current offset
                 Array.Resize(ref description.ptrs, description.ptrs.Length + 1);
                 description.ptrs[^1] = offset;
-                // while the sum of the offset is less than the end, increment by one
+                // while the sum of the offset and the alignment is less than the end, increment by one
                 for (; offset + alignment < end; offset++)
                 {
                     // peek at the data and compare with the given separator

@@ -2,6 +2,6 @@
 {
     public struct Unk_4B
     {
-        public string[] data;
+        public int item_id;
     }
 }

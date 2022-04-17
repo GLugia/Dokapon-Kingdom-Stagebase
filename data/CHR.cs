@@ -111,6 +111,11 @@ namespace CharaReader.data
         public Description unk_76;
         public Description unk_77;
         #endregion
+        public Unk_E2[] unk_E2;
+        public Unk_49[] unk_49;
+        public Unk_5C[] unk_5C;
+        public Description npc_all_text;
+        public Description[] npc_texts;
 
         public int length;
 
@@ -141,6 +146,7 @@ namespace CharaReader.data
             npc_names = Array.Empty<Description>();
             npc_enemy_models_0 = Array.Empty<NPCEnemyModel_0>();
             npc_models_0 = Array.Empty<NPCModel_0>();
+            npc_texts = Array.Empty<Description>();
 
             int table_id;
             int end;
@@ -358,6 +364,7 @@ namespace CharaReader.data
                     case 0x9A: status_unk_9A = reader.ReadStructs2<StatusUnk_9A>(table_id); break;
                     case 0x9B: status_unk_9B = reader.ReadStructs<StatusUnk_9B>(table_id); break;
                     #endregion
+                    #region Completed Objects
                     case 0x9E:
                         {
                             offset = reader.ReadInt32();
@@ -452,10 +459,49 @@ namespace CharaReader.data
                     // read, from the next 0x03 object, an array of raw s32 values
                     case 0x76: unk_76 = ReadDescription_Value(reader.ReadInt32()); break;
                     case 0x77: unk_77 = ReadDescription_PointerArray(reader.ReadInt32()); break;
+                    #endregion
                     // this is how we handle 'stopping points'
                     // basically whenever we want to compare file data, we end it like this
                     // at least until the project is actually finished
-                    case 0xE2: finished = true; break;
+                    case 0xE2: unk_E2 = reader.ReadStructs<Unk_E2>(table_id); break;
+                    case 0x49: unk_49 = reader.ReadStructs<Unk_49>(table_id); break;
+                    case 0x5C: unk_5C = reader.ReadStructs<Unk_5C>(table_id); break;
+                    case 0x4A: npc_all_text = ReadDescription_String(reader.ReadInt32(), reader.ReadInt32()); break;
+                    case 0x4B:
+                        {
+                            // skip id since this is the only object of this type
+                            item_id = reader.ReadInt32();
+                            if (item_id > npc_texts.Length - 1)
+                            {
+                                Array.Resize(ref npc_texts, item_id + 1);
+                            }
+                            // initialize the description at this index
+                            npc_texts[item_id] = new()
+                            {
+                                description = Array.Empty<byte>(),
+                                ptrs = Array.Empty<int>()
+                            };
+                            
+                            // until the next s32 value is a 0
+                            while ((temp = reader.ReadInt32()) != 0)
+                            {
+                                /* Due to all values being initialized outside this while loop, using them in dynamic
+                                 * action handling causes issues. This is because they are constantly changing but only
+                                 * ever used once the section changing them has finished being read. To solve this,
+                                 * we simply create a new instance of whatever values we need for the actions.
+                                 * In this case, two s32 values to contain the starting offset of the 0x03 object
+                                 * to read and also the index of the array of descriptions for referencing.
+                                 * Personally, I don't like to create new instances of objects every cycle but this
+                                 * is a case where it's absolutely necessary. Luckily they should be cleared once the
+                                 * actions have been invoked.
+                                 */
+                                int ptr = temp;
+                                int index = item_id;
+                                description_ptr_handlers.Add((a, b) => Utils.ReadDescription_String(a, b, ref npc_texts[index], ptr));
+                            }
+                            break;
+                        }
+                    case 0x47: finished = true; break;
                     // if, for some reason, we forget to handle a table_id, this will let us know.
                     default: throw new Exception($"Unhandled table {(reader.offset - sizeof(int)).ToHexString()}->{((byte)table_id).ToHexString()}");
                 }
@@ -463,7 +509,7 @@ namespace CharaReader.data
         }
 
         /// <summary>
-        /// Allocates a new <see cref="Description"/> class then adds <seealso cref="Utils.ReadDescription_String(byte[], int, ref Description, int, int?, int)"/>
+        /// Allocates a new <see cref="Description"/> class then adds <seealso cref="Utils.ReadDescription_StringArray(byte[], int, ref Description, int, int?, int)"/>
         /// to the 0x03 handler list.
         /// </summary>
         /// <param name="start_offset">The offset to start reading from.</param>
@@ -479,7 +525,7 @@ namespace CharaReader.data
                 description = Array.Empty<byte>()
             };
             // create a new handler that references the Description class so we can modify its data in post
-            description_ptr_handlers.Add((a, b) => Utils.ReadDescription_String(a, b, ref ret, start_offset, end_offset, alignment));
+            description_ptr_handlers.Add((a, b) => Utils.ReadDescription_StringArray(a, b, ref ret, start_offset, end_offset, alignment));
             return ret;
         }
 
@@ -826,7 +872,6 @@ namespace CharaReader.data
             writer.Write(0);
             writer.WriteDescriptions("npc_models_0", npc_models_0.Select(a => a.descriptions_0).Union(npc_models_0.Select(a => a.descriptions_1)).ToArray(), 0xFFFF);
             writer.WritePointer("des_end_ptr");
-            #endregion
 
             writer.WriteStructs(0x5D, unk_5D);
             writer.WriteStructs(0x2A, unk_2A);
@@ -883,6 +928,33 @@ namespace CharaReader.data
             writer.Write(0);
             writer.Write(0);
             writer.WriteDescriptions("77_ptrs", unk_77, origin_offset);
+            writer.WritePointer("des_end_ptr");
+            #endregion
+
+            writer.WriteStructs(0xE2, unk_E2);
+            writer.WriteStructs(0x49, unk_49);
+            writer.WriteStructs(0x5C, unk_5C);
+            writer.ReservePointer(0x4A, "4A_ptrs", 2);
+            for (int i = 0; i < npc_texts.Length; i++)
+            {
+                if (npc_texts[i] == null)
+                {
+                    continue;
+                }
+                writer.Write(0x4B);
+                writer.Write(i);
+                for (int j = 0; j < npc_texts[i].ptrs.Length; j++)
+                {
+                    writer.ReservePointerNoID($"4B_ptrs_{i}_{j}_{npc_texts[i].ptrs[j]}");
+                }
+                writer.Write(0);
+            }
+            writer.ReservePointer(0x03, "des_end_ptr");
+            writer.Write(0);
+            origin_offset = writer.offset;
+            writer.WritePointer("4A_ptrs");
+            writer.WriteDescriptions("4B_ptrs", npc_texts, origin_offset);
+            writer.WritePointer("4A_ptrs");
             writer.WritePointer("des_end_ptr");
 
             /* more goes here */

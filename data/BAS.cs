@@ -298,7 +298,7 @@ namespace CharaReader.data
             };
             int start_offset = reader.ReadInt32(); // these pointers aren't needed for our purposes. they are still written to file later on.
             int end_offset = reader.ReadInt32();
-            description_ptr_handlers.Add((a, b) => Utils.ReadDescription_String(a, b, ref ret, start_offset, end_offset, alignment));
+            description_ptr_handlers.Add((a, b) => Utils.ReadDescription_StringArray(a, b, ref ret, start_offset, end_offset, alignment));
             return ret;
         }
 
