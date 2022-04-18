@@ -161,7 +161,8 @@ namespace CharaReader.data
 				Array.Resize(ref _data, offset + data.Length);
 			}
 			data.CopyTo(_data, offset);
-			offset += data.Length + (offset % alignment);
+			offset += data.Length;
+			offset += alignment - (offset % alignment);
 		}
 
 		/// <summary>

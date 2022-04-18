@@ -1065,24 +1065,6 @@ namespace CharaReader.data
 			writer.WritePointer("label_ptr");
 			#endregion
 
-			writer.WriteStructs(0xDF, unk_DF);
-			writer.WriteStructs(0xD2, unk_D2);
-			writer.WriteStructs(0xD3, unk_D3);
-
-			writer.ReservePointer(0xC0, "C0_ptrs", 2);
-			writer.ReservePointer(0x03, "des_end_ptr");
-			writer.Write(0);
-			writer.WritePointer("C0_ptrs");
-			origin_offset = writer.offset;
-			for (int i = 0; i < unk_C0.ptrs.Length; i++)
-			{
-				writer.ReservePointerNoID($"C0_ptrs_{i}_{unk_C0.ptrs[i]}");
-			}
-			writer.Write(0);
-			writer.WriteDescriptions("C0_ptrs", unk_C0, origin_offset);
-			writer.WritePointer("C0_ptrs");
-			writer.WritePointer("des_end_ptr");
-
 			/* more goes here */
 
 			writer.WritePointer("chr_file_len_ptr");
