@@ -6,10 +6,8 @@ using System.Threading.Tasks;
 
 namespace CharaReader.testing.data_types
 {
-	public class Unk_6E
+	public class Unk_66
 	{
-		public int id;
-		public float x;
-		public float y;
+		public int value;
 	}
 }

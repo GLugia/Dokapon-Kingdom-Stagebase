@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 
@@ -19,17 +20,11 @@ namespace CharaReader.data
 		/// </summary>
 		public int offset;
 		/// <summary>
-		/// The current offset of the buffer in hex.
-		/// </summary>
-		public string offset_hex => offset.ToHexString();
-		/// <summary>
 		/// The length of the buffer.
 		/// </summary>
 		public int length => _data?.Length ?? -1;
-		/// <summary>
-		/// The length of the buffer in hex.
-		/// </summary>
-		public string length_hex => length.ToHexString();
+
+		private Dictionary<int, dynamic> class_pointers;
 
 		/// <summary>
 		/// Initializes the necessary fields for creating a new instance of <see cref="DataReader"/>.
@@ -41,6 +36,7 @@ namespace CharaReader.data
 			_data = File.ReadAllBytes(file);
 			// init offset to 0
 			offset = 0;
+			class_pointers = new();
 		}
 
 		/// <summary>
@@ -52,6 +48,9 @@ namespace CharaReader.data
 			_data = null;
 			// reset the offset
 			offset = 0;
+			// clear and null the class pointers
+			class_pointers.Clear();
+			class_pointers = null;
 		}
 
 		/// <summary>
@@ -214,6 +213,73 @@ namespace CharaReader.data
 		{
 			double ret = BitConverter.ToSingle(_data.AsSpan()[offset..(offset + sizeof(double))]);
 			offset += sizeof(double);
+			return ret;
+		}
+
+		public T ReadPointer<T>(int start_offset, int? end_offset = null, int alignment = sizeof(int))
+		{
+			if (class_pointers.TryGetValue(start_offset, out dynamic ret))
+			{
+				return (T)ret;
+			}
+			int temp = offset;
+			offset = start_offset;
+			Type type = typeof(T);
+			dynamic value;
+			if (type.IsPrimitive)
+			{
+				if (type.IsArray)
+				{
+					ret = Activator.CreateInstance(type, new object[] { 0 });
+					do
+					{
+						value = Utils.DynamicPeek(_data, offset, ret);
+						Array.Resize(ref ret, ret.Length + 1);
+						ret[^1] = value;
+						offset += value.Size();
+					}
+					while (value != 0);
+				}
+				ret = Activator.CreateInstance(type, Array.Empty<object>());
+				ret = Utils.DynamicPeek(_data, offset, ret);
+				offset += ret.Size();
+			}
+			else if (type.IsClass)
+			{
+				ret = Activator.CreateInstance<T>();
+				foreach (FieldInfo info in ret.GetType().GetFields())
+				{
+					// depending on the lowercase name of the type of this field,
+					// set the field's value to the value read from the buffer.
+					switch (info.FieldType.Name.ToLowerInvariant())
+					{
+						case "bool": info.SetValue(ret, ReadBool()); break;
+						case "char": info.SetValue(ret, ReadChar()); break;
+						case "char[]": info.SetValue(ret, ReadString().ToCharArray()); break;
+						case "string": info.SetValue(ret, ReadString()); break;
+						case "byte": info.SetValue(ret, ReadByte()); break;
+						case "sbyte": info.SetValue(ret, ReadSByte()); break;
+						case "uint16": info.SetValue(ret, ReadUInt16()); break;
+						case "int16": info.SetValue(ret, ReadInt16()); break;
+						case "uint32": info.SetValue(ret, ReadUInt32()); break;
+						case "int32": info.SetValue(ret, ReadInt32()); break;
+						case "uint64": info.SetValue(ret, ReadUInt64()); break;
+						case "int64": info.SetValue(ret, ReadInt64()); break;
+						case "single": info.SetValue(ret, ReadSingle()); break;
+						default: throw new Exception($"Unhandled type '{info.FieldType}' in struct '{ret}'");
+					}
+				}
+			}
+			else if (!type.IsEnum && !type.IsAbstract)
+			{
+				ret = ReadStruct<T>();
+			}
+			else
+			{
+				throw new Exception($"Unhandled type: {type}");
+			}
+			offset = temp;
+			class_pointers.Add(start_offset, ret);
 			return ret;
 		}
 

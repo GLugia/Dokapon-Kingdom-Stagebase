@@ -160,6 +160,7 @@ namespace CharaReader.data
 			{
 				throw new Exception($"Expected '@CHR' got {name}");
 			}
+			
 			// read the length of this file
 			length = reader.ReadInt32();
 			// jump to the offset listed after the length (0x30)
@@ -235,7 +236,13 @@ namespace CharaReader.data
 						}
 					#region Weapon Data
 					// handle the next 0x03 object, from 'a' to 'b', as a string array
-					case 0x5A: weapon_descriptions = ReadDescription_StringArray(reader.ReadInt32(), reader.ReadInt32()); break;
+
+
+
+					// TODO: case 0x5A: weapon_descriptions = reader.ReadPointer<string[]>(reader.ReadInt32(), reader.ReadInt32()); break;
+
+
+
 					// handle the next 0x03 object, from 'a' to 'b', as a string array
 					// i properly name the parameters according to what they're used for so i won't be using the
 					// "from 'a' to 'b'" shit anymore
@@ -535,6 +542,47 @@ namespace CharaReader.data
 					// if, for some reason, we forget to handle a table_id, this will let us know.
 					default: throw new Exception($"Unhandled table {(reader.offset - sizeof(int)).ToHexString()}->{((byte)table_id).ToHexString()}");
 				}
+			}
+
+
+			// create a new weapon struct
+			Array.Resize(ref weapons, weapons.Length + 1);
+			int weapon_id = weapons.Length - 1;
+			// if this is to be passed as a parameter to a method do the following:
+			// ExampleMethod(ref weapons[^1]);
+			weapons[^1] = new()
+			{
+				item_id = (short)weapon_id,
+				icon_id = 0x42,
+				name = "Developer Weapon",
+				unk_00 = 0,
+				class_id = 2, // save this value to a dictionary so it can be accessed using the name of a job instead
+							  // etc
+				did_item = (byte)weapon_descriptions.ptrs.Length // this sets the description to the new description they create
+			};
+			// allow them to set the descripton as a string
+			string des_ = "A new weapon for testing purposes.";
+			// save the pointer offset as the current length of the description
+			int ptr = weapon_descriptions.description.Length;
+			// translate the description to bytes in the shift-jis encoding
+			byte[] des_data = Program.shift_jis.GetBytes(des_);
+			// realign the data to whatever alignment is necessary for the section being edited. weapons are aligned to ints.
+			Array.Resize(ref des_data, des_data.Length + (sizeof(int) - (des_data.Length % sizeof(int))));
+			// resize the pointers to include the previously saved pointer
+			Array.Resize(ref weapon_descriptions.ptrs, weapon_descriptions.ptrs.Length + 1);
+			weapon_descriptions.ptrs[^1] = ptr;
+			// resize the descriptions to include the previously saved bytes
+			Array.Resize(ref weapon_descriptions.description, weapon_descriptions.description.Length + des_data.Length);
+			des_data.CopyTo(weapon_descriptions.description, ptr);
+			// based on job bonus, set the did_class id
+			weapons[^1].did_class = (byte)weapons[^1].class_id; // this isn't correct, it'd be a switch statement but i'm lazy
+
+			string weapon_description = weapon_descriptions.description.ReadString(weapon_descriptions.ptrs[weapons[^1].did_item]);
+			string weapon_class_bonus_description = weapon_bonus_descriptions.description.ReadString(weapon_bonus_descriptions.ptrs[weapons[^1].did_class + 1]);
+
+			for (int i = 0; i < weapon_bonus_descriptions.ptrs.Length; i++)
+			{
+				Console.Out.WriteLine(weapon_bonus_descriptions.description.ReadString(weapon_bonus_descriptions.ptrs[i]));
 			}
 		}
 
