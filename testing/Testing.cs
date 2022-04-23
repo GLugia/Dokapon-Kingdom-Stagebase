@@ -17,7 +17,7 @@ namespace CharaReader.testing
 		public long offset;
 		public FilePtr[] files;
 		// a pointer array for each type of object referenced
-		private SortedDictionary<DataType, IntPtr[]> data_type_ptrs;
+		private SortedDictionary<DataType, List<IntPtr>> data_type_ptrs;
 
 		public Testing()
 		{
@@ -28,8 +28,7 @@ namespace CharaReader.testing
 			IntPtr stagebase_ptr = Marshal.AllocHGlobal(_stagebase.Length);
 			// copy the bytes from stagebase to memory
 			Marshal.Copy(_stagebase, 0, stagebase_ptr, _stagebase.Length);
-			// we no longer need stagebase
-			_stagebase = null;
+			// NOTE: Never null the original _stagebase array. Doing so destroys the pointer to it.
 			// create a new FilePtr instance for stagebase
 			stagebase = new()
 			{
@@ -68,16 +67,17 @@ namespace CharaReader.testing
 			}
 			Print("Initializing data...");
 			// initialize the dictionary of types
-			data_type_ptrs = new SortedDictionary<DataType, IntPtr[]>();
+			data_type_ptrs = new SortedDictionary<DataType, List<IntPtr>>();
 			// iterate over all data types
 			for (byte i = 1; i < (byte)DataType.COUNT; i++)
 			{
 				// initialize each ID's list
-				data_type_ptrs.Add((DataType)i, Array.Empty<IntPtr>());
+				data_type_ptrs.Add((DataType)i, new List<IntPtr>());
 			}
 			Print("Done.\n");
 			// used for each object's type ID
 			DataType data_type;
+			bool finished = false;
 			// iterate through the files in memory
 			for (int i = 0; i < files.Length; i++)
 			{
@@ -86,15 +86,23 @@ namespace CharaReader.testing
 				for (offset = Marshal.ReadInt32(files[i].header); offset < Marshal.ReadInt32(files[i].length);)
 				{
 					// get the type of this object
-					data_type = (DataType)Marshal.ReadInt32(files[i].origin, (int)offset); ;
+					data_type = (DataType)Marshal.ReadInt32(files[i].origin, (int)offset);
+					if (data_type == (DataType)0x88)
+					{
+						finished = true;
+						break;
+					}
 					offset += sizeof(int);
 					// if the type is valid (not NONE aka 0 aka null)
-					if (data_type_ptrs.TryGetValue(data_type, out IntPtr[] ptrs))
+					if (data_type_ptrs.TryGetValue(data_type, out List<IntPtr> ptrs))
 					{
 						// create a pointer to the object's data and add it to the list
-						Array.Resize(ref ptrs, ptrs.Length + 1);
-						ptrs[^1] = Read(files[i].origin, data_type);
+						ptrs.Add(GetObjectPtr(files[i].origin, data_type));
 					}
+				}
+				if (finished)
+				{
+					break;
 				}
 			}
 			Print("Done.");
@@ -109,11 +117,18 @@ namespace CharaReader.testing
 		/// <param name="data_type">The ID of the type of data to read.</param>
 		/// <returns></returns>
 		/// <exception cref="Exception"></exception>
-		private IntPtr Read(IntPtr ptr, DataType data_type)
+		private IntPtr GetObjectPtr(IntPtr ptr, DataType data_type)
+		{
+			IntPtr ret = new((long)ptr + offset);
+			GetObjectFromPtr(ret, data_type);
+			return ret;
+		}
+
+		public dynamic GetObjectFromPtr(IntPtr ptr, DataType data_type)
 		{
 			dynamic result = Activator.CreateInstance(NewDataType(data_type));
-			IntPtr ret = new((long)ptr + offset);
 			dynamic temp;
+			int offset = 0;
 			foreach (FieldInfo field in result.GetType().GetFields())
 			{
 				switch (field.FieldType.Name.ToLowerInvariant())
@@ -195,7 +210,52 @@ namespace CharaReader.testing
 				}
 				field.SetValue(result, temp);
 			}
-			return ret;
+			this.offset += offset;
+			return result;
+		}
+
+		public IntPtr SetObjectToPtr(IntPtr ptr, object obj)
+		{
+			if (obj == null)
+			{
+				throw new NullReferenceException();
+			}
+			byte[] bytes;
+			int temp_offset = 0;
+			foreach (FieldInfo field in obj.GetType().GetFields())
+			{
+				bytes = field.FieldType.Name.ToLowerInvariant() switch
+				{
+					"sbyte" or "byte" => BitConverter.GetBytes((byte)field.GetValue(obj)),
+					"int16" or "uint16" => BitConverter.GetBytes((short)field.GetValue(obj)),
+					"int32" or "uin32" => BitConverter.GetBytes((int)field.GetValue(obj)),
+					"int64" or "uint64" => BitConverter.GetBytes((long)field.GetValue(obj)),
+					"single" => BitConverter.GetBytes((float)field.GetValue(obj)),
+					"double" => BitConverter.GetBytes((double)field.GetValue(obj)),
+					"string" => Program.shift_jis.GetBytes((string)field.GetValue(obj) ?? ""),
+					"intptr" => BitConverter.GetBytes((long)(IntPtr)field.GetValue(obj)),
+					_ => throw new Exception($"Unhandled type: {field.FieldType}")
+				};
+				foreach (byte b in bytes)
+				{
+					Marshal.WriteByte(ptr, temp_offset, b);
+					temp_offset++;
+				}
+			}
+			return ptr;
+		}
+
+		public IntPtr CreateNewObject(DataType data_type)
+		{
+			if (data_type_ptrs.TryGetValue(data_type, out List<IntPtr> ptrs))
+			{
+				dynamic instance = Activator.CreateInstance(NewDataType(data_type));
+				IntPtr ret = Marshal.AllocHGlobal(Utils.Size(instance));
+				ret = SetObjectToPtr(ret, instance);
+				ptrs.Add(ret);
+				return ret;
+			}
+			throw new KeyNotFoundException($"{data_type}");
 		}
 
 		/// <summary>
@@ -205,62 +265,7 @@ namespace CharaReader.testing
 		/// <param name="obj"></param>
 		private void Print<T>(in T obj) where T : notnull
 		{
-			Console.Out.Write(obj.ArrayToString());
-		}
-
-		/// <summary>
-		/// Write an object to a position in memory.
-		/// This will be rewritten later. It's only here for example.
-		/// </summary>
-		/// <typeparam name="T"></typeparam>
-		/// <param name="data_type"></param>
-		/// <param name="value"></param>
-		/// <param name="index"></param>
-		/// <returns></returns>
-		/// <exception cref="IndexOutOfRangeException"></exception>
-		/// <exception cref="KeyNotFoundException"></exception>
-		public ref IntPtr Set<T>(DataType data_type, in T value, int? index = null) where T : notnull
-		{
-			int real_index;
-			if (data_type_ptrs.TryGetValue(data_type, out IntPtr[] ptrs))
-			{
-				if (index == null)
-				{
-					index = ptrs.Length;
-					Array.Resize(ref ptrs, ptrs.Length + 1);
-				}
-				else if (index >= ptrs.Length)
-				{
-					throw new IndexOutOfRangeException($"{index}");
-				}
-				real_index = index.GetValueOrDefault();
-				Marshal.StructureToPtr(value, ptrs[real_index], index != null);
-				return ref ptrs[real_index];
-			}
-			throw new KeyNotFoundException($"{data_type}");
-		}
-
-		/// <summary>
-		/// Translate an IntPtr to a direct object of the given type.
-		/// This will be rewritten later. It's only here for example.
-		/// </summary>
-		/// <typeparam name="T"></typeparam>
-		/// <param name="data_type"></param>
-		/// <param name="index"></param>
-		/// <returns></returns>
-		/// <exception cref="IndexOutOfRangeException"></exception>
-		/// <exception cref="KeyNotFoundException"></exception>
-		public T Get<T>(DataType data_type, int index)
-		{
-			if (data_type_ptrs.TryGetValue(data_type, out IntPtr[] ptrs))
-			{
-				if (index >= ptrs.Length)
-				{
-					throw new IndexOutOfRangeException($"{index}");
-				}
-				return Marshal.PtrToStructure<T>(ptrs[index]);
-			}
-			throw new KeyNotFoundException($"{data_type}");
+			Console.Out.Write(obj);
 		}
 
 		/// <summary>
@@ -274,9 +279,21 @@ namespace CharaReader.testing
 			{
 				DataType.FILE_LABEL => typeof(FileLabel),
 				DataType.STAGE => typeof(Stage),
-				DataType.UNK_6E => typeof(Unk_6E),
 				DataType.LOCATION => typeof(Location),
+				DataType.WEAPONS => null,
+				DataType.UNK_6E => typeof(Unk_6E),
 				_ => throw new Exception($"Unhandled data type: {data_type}")
+			};
+
+		public static DataType GetDataType<T>(in T obj) where T : notnull =>
+			obj switch
+			{
+				FileLabel => DataType.FILE_LABEL,
+				Stage => DataType.STAGE,
+				Location => DataType.LOCATION,
+				Unk_6E => DataType.UNK_6E,
+				null => DataType.WEAPONS,
+				_ => throw new Exception($"Unhandled object type: {obj}")
 			};
 	}
 

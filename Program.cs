@@ -1,4 +1,5 @@
 ﻿using CharaReader.data;
+using CharaReader.testing;
 using System;
 using System.IO;
 using System.Text;
@@ -9,11 +10,28 @@ namespace CharaReader
 	{
 		// stagebase string encoding
 		public static Encoding shift_jis { get; private set; }
+		public static Testing testing { get; private set; }
 		private static void Main(string[] _)
 		{
 			// find the shift-jis encoding
 			shift_jis = CodePagesEncodingProvider.Instance.GetEncoding("shift-jis");
+			testing = new();
 
+			// allocate a new object of the ID given
+			IntPtr new_location_ptr = testing.CreateNewObject(DataType.LOCATION);
+			// convert the object in memory to a referenced object
+			Location new_location = testing.GetObjectFromPtr(new_location_ptr, DataType.LOCATION);
+			// edit any data at all
+			new_location.id = 253;
+			new_location.name = "new_name_example_location".Align(sizeof(int));
+			// push the object back to ram to solidify changes
+			new_location_ptr = testing.SetObjectToPtr(new_location_ptr, new_location);
+			// get the newly pushed object from ram to verify changes
+			new_location = testing.GetObjectFromPtr(new_location_ptr, DataType.LOCATION);
+			Console.Out.WriteLine(new_location.name);
+
+
+			/*
 			// attempt to split stagebase into bas and chr
 			if (!SplitStagebase())
 			{
@@ -53,6 +71,7 @@ namespace CharaReader
 				Console.Out.WriteLine("Failed to compare STAGEBASE.DAT to STAGEBASE_NEW.DAT");
 				return;
 			}
+			/**/
 		}
 
 		/// <summary>

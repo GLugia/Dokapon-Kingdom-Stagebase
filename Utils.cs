@@ -1,5 +1,6 @@
 ﻿using CharaReader.data;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 
@@ -72,8 +73,9 @@ namespace CharaReader
 		/// <returns>A string value.</returns>
 		public static string ArrayToString(this object obj)
 		{
+			Type obj_type = obj.GetType();
 			// if the object is an array
-			if (obj.GetType().IsArray)
+			if (obj_type.IsArray)
 			{
 				// cast it to the default array class
 				Array nobj = obj as Array;
@@ -95,10 +97,20 @@ namespace CharaReader
 				return ret + " }";
 			}
 			// if the object is a primitive type
-			if (obj.GetType().IsPrimitive)
+			if (obj_type.IsPrimitive)
 			{
 				// return the object as hex
 				return $"{obj.ToHexString(false)}";
+			}
+			if (!obj_type.IsAbstract && !obj_type.IsEnum)
+			{
+				List<string> field_data = new();
+				TypedReference tref = __makeref(obj);
+				foreach (FieldInfo field in obj_type.GetFields())
+				{
+					field_data.Add($"{field.Name, -16} = {field.GetValueDirect(tref)}");
+				}
+				return $"{obj_type.Name}\n{{\n\t{string.Join("\n\t", field_data)}\n}}\n";
 			}
 			// return the default string
 			return obj.ToString();
@@ -246,6 +258,15 @@ namespace CharaReader
 			return info != null;
 		}
 
+		public static string Align(this string value, int alignment)
+		{
+			while (alignment - (value.Length % alignment) != alignment)
+			{
+				value += '\0';
+			}
+			return value;
+		}
+
 		/// <summary>
 		/// Reads a string of bytes from the given byte array.
 		/// </summary>
@@ -253,7 +274,6 @@ namespace CharaReader
 		/// <param name="offset">The index of the array to start reading from.</param>
 		/// <param name="alignment">The alignment of the string.</param>
 		/// <returns>A Shift-JIS string</returns>
-		[Obsolete]
 		public static string ReadString(this byte[] data, int offset, int alignment = sizeof(int))
 		{
 			int end;
@@ -264,7 +284,14 @@ namespace CharaReader
 					break;
 				}
 			}
-			end += alignment - (end % alignment);
+			if (end + (alignment - (end % alignment)) < data.Length)
+			{
+				end += alignment - (end % alignment);
+			}
+			else
+			{
+				end = data.Length;
+			}
 			return Program.shift_jis.GetString(data.AsSpan()[offset..end]);
 		}
 
