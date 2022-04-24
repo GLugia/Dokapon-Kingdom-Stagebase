@@ -17,7 +17,7 @@ namespace CharaReader.testing
 		public FilePtr stagebase;
 		public FilePtr[] stagebase_files;
 		// a pointer array for each type of object referenced
-		private SortedDictionary<DataType, List<object>> default_types;
+		private SortedDictionary<DataType, List<dynamic>> default_types;
 		private SortedDictionary<IntPtr, Array> ptr_references;
 
 		public Testing()
@@ -34,6 +34,11 @@ namespace CharaReader.testing
 					break;
 				}
 			}
+			Print($"Testing getting objects from the dictionary:\n");
+			Print($"\t{default_types[DataType.LOCATION][0].name}\n");
+			Print($"Testing setting an object then getting it for printing:\n");
+			default_types[DataType.LOCATION][0].name = "HAHAHAHAHAHAHA";
+			Print($"\t{default_types[DataType.LOCATION][0].name}\n");
 			Print("Done.");
 		}
 
@@ -411,67 +416,96 @@ namespace CharaReader.testing
 		/// <param name="data_type">The ID to convert.</param>
 		/// <returns></returns>
 		/// <exception cref="Exception">If the ID is invalid or unhandled.</exception>
-		public static Type NewDataType(DataType data_type) =>
-			data_type switch
+		public static Type NewDataType(DataType data_type)
+		{
+			// try to parse the object using the name of the DataType
+			if (EnumToType(data_type, out Type type))
 			{
-				DataType.FILE_LABEL => typeof(FileLabel),
-				DataType.PTR_DATA => typeof(IntPtr),
-				DataType.STAGE => typeof(Stage),
-				DataType.UNK_2B => typeof(Unk_2B),
-				DataType.UNK_2F => typeof(Unk_2F),
-				DataType.LOCATION => typeof(Location),
-				DataType.WEAPONS => null,
-				DataType.UNK_66 => typeof(Unk_66),
-				DataType.TEMPLE => typeof(Temple),
-				DataType.UNK_68 => typeof(Unk_68),
-				DataType.TOWN => typeof(Town),
-				DataType.UNK_6E => typeof(Unk_6E),
-				DataType.UNK_6F => typeof(Unk_6F),
-				DataType.UNK_7F => typeof(Unk_7F),
-				DataType.SPACE_EFFECT => typeof(SpaceEffect),
-				DataType.SPACE => typeof(Space),
-				DataType.PTR_DATA_SPACE => typeof(DataArray),
-				DataType.UNK_93 => typeof(Unk_93),
-				DataType.UNK_94 => typeof(Unk_94),
-				DataType.UNK_DA => typeof(Unk_DA),
-				DataType.UNK_DB => typeof(Unk_DB),
-				DataType.UNK_E0 => typeof(Unk_E0),
+				// return the type from Assembly
+				return type;
+			}
+			// fallback for DataTypes that aren't directly translated
+			return data_type switch
+			{
+				DataType.PTR => typeof(IntPtr),
 				_ => null
 			};
+		}
 
-		public static DataType GetDataType<T>(in T obj) where T : notnull =>
-			obj switch
+		public static DataType GetDataType<T>(in T obj) where T : notnull
+		{
+			// try to parse the DataType using the name of the object
+			if (TypeToEnum(obj, out DataType data_type))
 			{
-				FileLabel => DataType.FILE_LABEL,
-				IntPtr => DataType.PTR_DATA,
-				Stage => DataType.STAGE,
-				Unk_2B => DataType.UNK_2B,
-				Unk_2F => DataType.UNK_2F,
-				Location => DataType.LOCATION,
-				Weapon => DataType.WEAPONS,
-				Unk_66 => DataType.UNK_66,
-				Temple => DataType.TEMPLE,
-				Unk_68 => DataType.UNK_68,
-				Town => DataType.TOWN,
-				Unk_6E => DataType.UNK_6E,
-				Unk_6F => DataType.UNK_6F,
-				Unk_7F => DataType.UNK_7F,
-				SpaceEffect => DataType.SPACE_EFFECT,
-				Space => DataType.SPACE,
-				Unk_93 => DataType.UNK_93,
-				Unk_94 => DataType.UNK_94,
-				Unk_DA => DataType.UNK_DA,
-				Unk_DB => DataType.UNK_DB,
-				Unk_E0 => DataType.UNK_E0,
-				_ => throw new Exception($"Unhandled object type: {obj}")
+				return data_type;
+			}
+			// fallback for types that aren't directly translated
+			return obj switch
+			{
+				IntPtr => DataType.PTR,
+				_ => throw new InvalidCastException($"{obj} is not a DataType")
 			};
+		}
+
+		public static bool TypeToEnum<T>(object o, out T value) where T : struct
+		{
+			string name = o.GetType().Name;
+			string real_name = "";
+			for (int i = 0; i < name.Length; i++)
+			{
+				if (char.IsUpper(name[i]))
+				{
+					real_name += '_';
+				}
+				real_name += char.ToUpper(name[i]);
+			}
+			return Enum.TryParse(real_name, out value);
+		}
+
+		public static bool EnumToType<T>(in T value, out Type o) where T : struct
+		{
+			// store the name of the value
+			string name = $"{value}";
+			string real_name = "";
+			// noun-ify the name (SPACE -> Space, weapon -> Weapon, file_LABEL -> File_Label)
+			if (name.Contains("UNK"))
+			{
+				real_name = string.Join("", "Unk", name[3..]);
+			}
+			else
+			{
+				for (int i = 0; i < name.Length; i++)
+				{
+					// if this index is an underscore
+					if (name[i] == '_' && i + 1 < name.Length)
+					{
+						// append it and increment the index
+						real_name += name[i++];
+						// append the next char as uppercase
+						real_name += char.ToUpperInvariant(name[i]);
+					}
+					// if it's not the first index
+					else if (i != 0)
+					{
+						real_name += char.ToLowerInvariant(name[i]);
+					}
+					// if it is the first index
+					else
+					{
+						real_name += char.ToUpperInvariant(name[i]);
+					}
+				}
+			}
+			o = Assembly.GetExecutingAssembly().GetTypes().FirstOrDefault(a => a.IsClass && !a.IsAbstract && a.Name == real_name);
+			return o != null;
+		}
 	}
 
 	public enum DataType : byte
 	{
 		NONE,
 		FILE_LABEL = 0x01,
-		PTR_DATA = 0x03,
+		PTR = 0x03,
 		STAGE = 0x05,
 		UNK_2B = 0x2B,
 		UNK_2F = 0x2F,
@@ -486,7 +520,7 @@ namespace CharaReader.testing
 		UNK_7F = 0x7F,
 		SPACE_EFFECT = 0x86,
 		SPACE = 0x87,
-		PTR_DATA_SPACE = 0x88,
+		SPACE_DATA = 0x88,
 		UNK_93 = 0x93,
 		UNK_94 = 0x94,
 		UNK_DA = 0xDA,

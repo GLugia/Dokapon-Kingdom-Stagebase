@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace CharaReader.testing.data_types
 {
-	public class DataArray
+	public class Space_Data
 	{
 		public IntPtr start;
 		public IntPtr end;

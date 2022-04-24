@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace CharaReader.testing
 {
-	public class FileLabel
+	public class File_Label
 	{
 		public IntPtr ptr;
 		public string text;

@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace CharaReader.testing.data_types
 {
-	public class SpaceEffect
+	public class Space_Effect
 	{
 		public byte id;
 		public byte sub_id;
