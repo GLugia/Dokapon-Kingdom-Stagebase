@@ -9,24 +9,26 @@ using System.Runtime.InteropServices;
 
 namespace CharaReader.data
 {
-	public unsafe class Testing
+	public unsafe class Stagebase
 	{
 		// stagebase
 		private byte[] _stagebase;
 		private IntPtr stagebase_ptr;
-		public Ptr_File stagebase;
-		public Ptr_File[] stagebase_files;
+		private Ptr_File stagebase;
+		private Ptr_File[] stagebase_files;
 		// a pointer array for each type of object referenced
-		private SortedDictionary<DataType, List<dynamic>> default_types;
+		private SortedDictionary<DataType, List<dynamic>> _struct_data;
+		public IReadOnlyDictionary<DataType, List<dynamic>> struct_data => _struct_data;
 
 		/* TODO: Change Value type to an abstract class type
 		 * this will let us get the size of the object for skipping
 		 * its contents but also let us use named fields to access
 		 * the existing bytes
 		 */
-		private SortedDictionary<IntPtr, byte[]> ptr_references;
+		private SortedDictionary<IntPtr, byte[]> _ptr_data;
+		public IReadOnlyDictionary<IntPtr, byte[]> ptr_data => _ptr_data;
 
-		public Testing()
+		public Stagebase()
 		{
 			Print("Loading Stagebase to memory...");
 			// read the bytes from the file
@@ -92,13 +94,13 @@ namespace CharaReader.data
 			}
 			Print("Initializing data...");
 			// initialize the dictionary of types
-			ptr_references = new SortedDictionary<IntPtr, byte[]>();
-			default_types = new SortedDictionary<DataType, List<object>>();
+			_ptr_data = new SortedDictionary<IntPtr, byte[]>();
+			_struct_data = new SortedDictionary<DataType, List<object>>();
 			// iterate over all data types
 			for (byte i = 1; i < (byte)DataType.COUNT; i++)
 			{
 				// initialize each ID's list
-				default_types.Add((DataType)i, new List<object>());
+				_struct_data.Add((DataType)i, new List<object>());
 			}
 			Print("Done.\n");
 		}
@@ -111,15 +113,15 @@ namespace CharaReader.data
 			{
 				IntPtr position = (IntPtr)((long)ptr.origin + offset);
 				// if this offset is a referenced ptr, we want to skip over its contained data.
-				if (ptr_references.ContainsKey(position))
+				if (_ptr_data.ContainsKey(position))
 				{
-					if (ptr_references[position] == null)
+					if (_ptr_data[position] == null)
 					{
 						throw new NullReferenceException($"{position}");
 					}
 					// skip the data held in this array
 					Print($"\tSkipping locked offset: 0x{offset:X}\n");
-					offset += ptr_references[position].Length;
+					offset += _ptr_data[position].Length;
 					// restart the loop to check if the next offset is also a referenced ptr
 					continue;
 				}
@@ -170,7 +172,7 @@ namespace CharaReader.data
 						else if (result != null)
 						{
 							// add it to the list of similar objects
-							default_types[(DataType)data_type].Add(result);
+							_struct_data[(DataType)data_type].Add(result);
 						}
 						break;
 				}
@@ -412,10 +414,10 @@ namespace CharaReader.data
 							Dictionary<IntPtr, byte[]> handler = temp.Handle();
 							foreach ((IntPtr pos, byte[] arr) in handler)
 							{
-								if (!ptr_references.ContainsKey(pos))
+								if (!_ptr_data.ContainsKey(pos))
 								{
 									Print($"Locking 0x{(long)pos - (long)origin:X} to {arr.ArrayToString()}...");
-									ptr_references.Add(pos, arr);
+									_ptr_data.Add(pos, arr);
 								}
 								else
 								{

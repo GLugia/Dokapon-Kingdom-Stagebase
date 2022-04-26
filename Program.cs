@@ -7,7 +7,7 @@ namespace CharaReader
 	{
 		// stagebase string encoding
 		public static Encoding shift_jis { get; private set; }
-		public static Testing testing { get; private set; }
+		public static Stagebase testing { get; private set; }
 		private static void Main(string[] _)
 		{
 			// find the shift-jis encoding
