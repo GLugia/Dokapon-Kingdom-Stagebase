@@ -1,10 +1,14 @@
-﻿using CharaReader.data.ptrs;
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
 
 namespace CharaReader.data.types
 {
 	public class Unk_C0
 	{
-		public Ptr_List ptr;
-		public int unused_ptr;
+		public Ptr<List<string>> data;
+		public int do_not_use_this_ptr;
 	}
 }

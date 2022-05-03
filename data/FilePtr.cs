@@ -4,10 +4,12 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace CharaReader.data.types
+namespace CharaReader.data
 {
-	public class Unk_76
+	public class FilePtr
 	{
-		public Ptr<int[]> ptr;
+		public IntPtr origin;
+		public IntPtr header;
+		public IntPtr length;
 	}
 }

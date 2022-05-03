@@ -1,10 +1,10 @@
-﻿using CharaReader.data.ptrs;
+﻿using System.Collections.Generic;
 
 namespace CharaReader.data.types
 {
 	public class Npc_Text
 	{
 		public int id;
-		public Ptr_Array ptr;
+		//public List_S<string> ptr;
 	}
 }

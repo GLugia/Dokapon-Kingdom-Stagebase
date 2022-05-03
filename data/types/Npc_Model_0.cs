@@ -1,4 +1,4 @@
-﻿using CharaReader.data.ptrs;
+﻿using System.Collections.Generic;
 
 namespace CharaReader.data.types
 {
@@ -8,7 +8,7 @@ namespace CharaReader.data.types
 		public string f0;
 		public string k0;
 		public string fg0;
-		public Ptr_Array ptr_1;
-		public Ptr_Array ptr_2;
+		public Dictionary<int, Ptr<ushort[]>> ptr_1;
+		public Dictionary<int, Ptr<ushort[]>> ptr_2;
 	}
 }

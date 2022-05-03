@@ -4,10 +4,11 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace CharaReader.data.types
+namespace CharaReader.data.types.subtypes
 {
-	public class Unk_76
+	public struct Unk_78_Data
 	{
-		public Ptr<int[]> ptr;
+		public byte[] unk_00;
+		public byte[] unk_01;
 	}
 }

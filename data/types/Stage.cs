@@ -1,10 +1,10 @@
-﻿using CharaReader.data.ptrs;
+﻿using System;
 
 namespace CharaReader.data
 {
 	public unsafe class Stage
 	{
 		public int id;
-		public Ptr_Basic ptr;
+		public Ptr<string> ptr;
 	}
 }

@@ -2,6 +2,6 @@
 {
 	public class Unk_94
 	{
-		public byte[] data;
+		public List_SP<byte> data;
 	}
 }

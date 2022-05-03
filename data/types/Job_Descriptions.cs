@@ -1,9 +1,7 @@
-﻿using CharaReader.data.ptrs;
-
-namespace CharaReader.data.types
+﻿namespace CharaReader.data.types
 {
 	public class Job_Descriptions
 	{
-		public Ptr_Data ptr;
+		public List_SE<string> descriptions;
 	}
 }

@@ -2,6 +2,6 @@
 {
 	public class Unk_9E
 	{
-		public byte[] data;
+		public List_EP<byte> data;
 	}
 }

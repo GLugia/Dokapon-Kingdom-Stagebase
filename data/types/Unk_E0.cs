@@ -2,6 +2,6 @@
 {
 	public class Unk_E0
 	{
-		public ushort[] data;
+		public List_EP<ushort> data;
 	}
 }

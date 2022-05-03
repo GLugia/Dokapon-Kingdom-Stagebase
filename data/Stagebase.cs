@@ -1,21 +1,21 @@
-﻿using CharaReader.data.ptrs;
-using System;
+﻿using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using static CharaReader.Utils;
 
 namespace CharaReader.data
 {
 	public unsafe class Stagebase
 	{
+		private StreamWriter logger;
 		// stagebase
 		private byte[] _stagebase;
 		private IntPtr stagebase_ptr;
-		private Ptr_File stagebase;
-		private Ptr_File[] stagebase_files;
+		private FilePtr stagebase;
+		private FilePtr[] stagebase_files;
 		// a pointer array for each type of object referenced
 		private SortedDictionary<DataType, List<dynamic>> _struct_data;
 		public IReadOnlyDictionary<DataType, List<dynamic>> struct_data => _struct_data;
@@ -25,11 +25,16 @@ namespace CharaReader.data
 		 * its contents but also let us use named fields to access
 		 * the existing bytes
 		 */
-		private SortedDictionary<IntPtr, byte[]> _ptr_data;
-		public IReadOnlyDictionary<IntPtr, byte[]> ptr_data => _ptr_data;
+		private SortedDictionary<IntPtr, dynamic> _ptr_data;
+		public IReadOnlyDictionary<IntPtr, dynamic> ptr_data => _ptr_data;
 
 		public Stagebase()
 		{
+			logger = new(File.Create("DKSBE.log"), Program.shift_jis)
+			{
+				AutoFlush = true,
+				NewLine = "\n"
+			};
 			Print("Loading Stagebase to memory...");
 			// read the bytes from the file
 			_stagebase = File.ReadAllBytes("STAGEBASE.DAT");
@@ -39,10 +44,16 @@ namespace CharaReader.data
 			Marshal.Copy(_stagebase, 0, stagebase_ptr, _stagebase.Length);
 			// initialize and allocate stagebase data
 			LoadStagebase();
+
+			Print("Done.\n");
+		}
+
+		internal void ParseObjects()
+		{
 			// iterate through the files in memory
 			for (int i = 0; i < stagebase_files.Length; i++)
 			{
-				Print($"Loading {Program.shift_jis.GetString(BitConverter.GetBytes(Marshal.ReadInt32(stagebase_files[i].origin)))}...\n");
+				Print($"\nLoading {Program.shift_jis.GetString(BitConverter.GetBytes(Marshal.ReadInt32(stagebase_files[i].origin)))}...\n");
 				// read all default objects from this file
 				if (!ReadFile(stagebase_files[i]))
 				{
@@ -50,7 +61,12 @@ namespace CharaReader.data
 				}
 			}
 			Marshal.FreeHGlobal(stagebase_ptr);
-			Print("Done.");
+		}
+
+		internal void Close()
+		{
+			logger.Flush();
+			logger.Close();
 		}
 
 		private void LoadStagebase()
@@ -68,7 +84,7 @@ namespace CharaReader.data
 			};
 			Print($"Stagebase loaded to 0x{stagebase.origin:x} with a length of 0x{(long)stagebase.length - (long)stagebase.origin:x}\n");
 			// initialize the FilePtr array
-			stagebase_files = Array.Empty<Ptr_File>();
+			stagebase_files = Array.Empty<FilePtr>();
 			// read every file in stagebase
 			for (long offset = (long)stagebase.origin; offset < (long)stagebase.length;)
 			{
@@ -94,7 +110,7 @@ namespace CharaReader.data
 			}
 			Print("Initializing data...");
 			// initialize the dictionary of types
-			_ptr_data = new SortedDictionary<IntPtr, byte[]>();
+			_ptr_data = new SortedDictionary<IntPtr, dynamic>();
 			_struct_data = new SortedDictionary<DataType, List<object>>();
 			// iterate over all data types
 			for (byte i = 1; i < (byte)DataType.COUNT; i++)
@@ -102,10 +118,11 @@ namespace CharaReader.data
 				// initialize each ID's list
 				_struct_data.Add((DataType)i, new List<object>());
 			}
+			_stagebase = null;
 			Print("Done.\n");
 		}
 
-		private bool ReadFile(Ptr_File ptr)
+		private bool ReadFile(FilePtr ptr)
 		{
 			int data_type;
 			for (long offset = Marshal.ReadInt32(ptr.header);
@@ -120,8 +137,9 @@ namespace CharaReader.data
 						throw new NullReferenceException($"{position}");
 					}
 					// skip the data held in this array
-					Print($"\tSkipping locked offset: 0x{offset:X}\n");
-					offset += _ptr_data[position].Length;
+					Print($"Skipping locked offset: 0x{offset:X}\n");
+					int size = Utils.Size(_ptr_data[position]);
+					offset += size;
 					// restart the loop to check if the next offset is also a referenced ptr
 					continue;
 				}
@@ -129,11 +147,35 @@ namespace CharaReader.data
 				if (offset % sizeof(int) != 0)
 				{
 					offset += sizeof(int) - (offset % sizeof(int));
+					continue;
 				}
+
+				// read until the next 03 object is found and store it's ending offset
+				long ret_offset = offset;
+				int id_of_03;
+				int end_of_03;
+				int zero_of_03;
+				do
+				{
+					id_of_03 = Marshal.ReadInt32(ptr.origin, (int)offset);
+					end_of_03 = Marshal.ReadInt32(ptr.origin, (int)offset + sizeof(int));
+					zero_of_03 = Marshal.ReadInt32(ptr.origin, (int)offset + sizeof(long));
+					offset += sizeof(int);
+				}
+				while ((id_of_03 != 0x03
+					|| end_of_03 <= offset
+					|| zero_of_03 != 0)
+					&& offset < Marshal.ReadInt32(ptr.length));
+				if (offset >= Marshal.ReadInt32(ptr.length))
+				{
+					end_of_03 = Marshal.ReadInt32(ptr.length);
+				}
+				offset = ret_offset;
+
 				// read the next ID
 				data_type = Marshal.ReadInt32(ptr.origin, (int)offset);
 				offset += sizeof(int);
-				Print($"Reading {(DataType)data_type} at 0x{offset - sizeof(int):X}...");
+				Print($"Reading {Enum.GetName(typeof(DataType), (byte)data_type) ?? ((byte)data_type).ToHexString()} at 0x{offset - sizeof(int):X}...");
 				switch (data_type)
 				{
 					// if the ID read is 0x03, take as many ptrs from this section as possible
@@ -145,7 +187,7 @@ namespace CharaReader.data
 
 					// if the ID read is not 0x03, try to read it as a struct object
 					default:
-						if (!ReadObjectFromPtr(ptr.origin, ref offset, (DataType)data_type, out dynamic result))
+						if (!EnumToType((DataType)data_type, out Type type) || !TryReadClass(ptr.origin, ref offset, end_of_03, type, out dynamic result))
 						{
 							// create an easily visible message explaining the ID
 							// of the object we failed to read and list the position
@@ -173,264 +215,504 @@ namespace CharaReader.data
 						{
 							// add it to the list of similar objects
 							_struct_data[(DataType)data_type].Add(result);
+							Print($"Value is {Utils.ConvertToString(result)}... ");
 						}
 						break;
 				}
-				Print("Done.\n");
+				Print("Done.\n\n");
 			}
 			return true;
 		}
 
-		public bool ReadObjectFromPtr(IntPtr origin, ref long offset, DataType data_type, out dynamic result)
+		public bool TryReadClass(IntPtr origin, ref long offset, int end_of_03, Type type, out dynamic result)
 		{
-			Type type = NewDataType(data_type);
-			// if the type is invalid
-			if (type == null)
-			{
-				// set the result to null
-				result = null;
-				// return false to stop reading
-				return false;
-			}
 			result = Activator.CreateInstance(type);
-			dynamic temp;
-			dynamic temp_value;
-			dynamic temp_end;
-			Array data;
+			TypedReference tref = __makeref(result);
+			object ref_value;
 			foreach (FieldInfo field in result.GetType().GetFields())
 			{
-				switch (field.FieldType.Name.ToLowerInvariant())
+				if (!TryReadField(origin, ref offset, end_of_03, field.FieldType, out dynamic value))
 				{
-					case "char[]":
-						temp_value = Marshal.ReadInt32(origin, (int)offset);
-						offset += sizeof(int);
-						temp = offset; // store origin of data
-						data = Array.CreateInstance(typeof(byte), temp_value - offset);
-						for (; offset < temp_value; offset++)
-						{
-							data.SetValue(Marshal.ReadByte(origin, (int)offset), offset - temp);
-						}
-						temp = Program.shift_jis.GetChars((byte[])data);
-						break;
-					case "byte":
-						temp = Marshal.ReadByte(origin, (int)offset);
-						offset++;
-						break;
-					case "byte[]":
-						temp_value = Marshal.ReadInt32(origin, (int)offset);
-						offset += sizeof(int);
-						if (temp_value > offset)
-						{
-							temp_value -= offset;
-						}
-						temp_end = Marshal.ReadInt32(origin, (int)offset);
-						offset += sizeof(int);
-						data = Array.CreateInstance(typeof(byte), temp_value);
-						for (int i = 0; i < temp_value; i++)
-						{
-							data.SetValue(Marshal.ReadByte(origin, (int)offset), i);
-							offset++;
-						}
-						temp = data;
-						offset = temp_end;
-						break;
-					case "sbyte":
-						temp = (sbyte)Marshal.ReadByte(origin, (int)offset);
-						offset++;
-						break;
-					case "sbyte[]":
-						temp_value = Marshal.ReadInt32(origin, (int)offset);
-						offset += sizeof(int);
-						temp = offset; // store origin of data
-						data = Array.CreateInstance(typeof(sbyte), temp_value - offset);
-						for (; offset < temp_value; offset++)
-						{
-							data.SetValue((sbyte)Marshal.ReadByte(origin, (int)offset), offset - temp);
-						}
-						temp = data;
-						break;
-					case "uint16":
-						temp = (ushort)Marshal.ReadInt16(origin, (int)offset);
-						offset += sizeof(ushort);
-						break;
-					case "uint16[]":
-						temp_value = Marshal.ReadInt32(origin, (int)offset);
-						offset += sizeof(int);
-						temp_end = Marshal.ReadInt32(origin, (int)offset);
-						offset += sizeof(int);
-						temp = offset; // store origin of data
-						data = Array.CreateInstance(typeof(ushort), (temp_value - offset) / sizeof(ushort));
-						for (; offset < temp_value; offset += sizeof(ushort))
-						{
-							data.SetValue((ushort)Marshal.ReadInt16(origin, (int)offset), (offset - temp) / sizeof(ushort));
-						}
-						temp = data;
-						offset = temp_end;
-						break;
-					case "int16":
-						temp = Marshal.ReadInt16(origin, (int)offset);
-						offset += sizeof(short);
-						break;
-					case "int16[]":
-						temp_value = Marshal.ReadInt32(origin, (int)offset);
-						offset += sizeof(int);
-						temp = offset; // store origin of data
-						data = Array.CreateInstance(typeof(short), (temp_value - offset) / sizeof(short));
-						for (; offset < temp_value; offset += sizeof(short))
-						{
-							data.SetValue(Marshal.ReadInt16(origin, (int)offset), (offset - temp) / sizeof(short));
-						}
-						temp = data;
-						break;
-					case "uint32":
-						temp = (uint)Marshal.ReadInt32(origin, (int)offset);
-						offset += sizeof(uint);
-						break;
-					case "uint32[]":
-						temp_value = Marshal.ReadInt32(origin, (int)offset);
-						offset += sizeof(int);
-						temp = offset; // store origin of data
-						data = Array.CreateInstance(typeof(uint), 99);
-						offset = temp_value;
-						for (int i = 0; i < data.Length; i++)
-						{
-							data.SetValue((uint)Marshal.ReadInt32(origin, (int)offset), i);
-							offset += sizeof(uint);
-						}
-						offset = temp;
-						temp = data;
-						break;
-					case "int32":
-						temp = Marshal.ReadInt32(origin, (int)offset);
-						offset += sizeof(int);
-						break;
-					case "int32[]":
-						temp_value = Marshal.ReadInt32(origin, (int)offset);
-						offset += sizeof(int);
-						temp = offset; // store origin of data
-						data = Array.CreateInstance(typeof(int), (temp_value - offset) / sizeof(int));
-						for (; offset < temp_value; offset += sizeof(int))
-						{
-							data.SetValue(Marshal.ReadInt32(origin, (int)offset), (offset - temp) / sizeof(uint));
-						}
-						temp = data;
-						break;
-					case "uint64":
-						temp = (ulong)Marshal.ReadInt64(origin, (int)offset);
-						offset += sizeof(ulong);
-						break;
-					case "uint64[]":
-						temp_value = Marshal.ReadInt32(origin, (int)offset);
-						offset += sizeof(int);
-						temp = offset; // store origin of data
-						data = Array.CreateInstance(typeof(ulong), (temp_value - offset) / sizeof(ulong));
-						for (; offset < temp_value; offset += sizeof(ulong))
-						{
-							data.SetValue((ulong)Marshal.ReadInt64(origin, (int)offset), (offset - temp) / sizeof(ulong));
-						}
-						temp = data;
-						break;
-					case "int64":
-						temp = Marshal.ReadInt64(origin, (int)offset);
-						offset += sizeof(long);
-						break;
-					case "int64[]":
-						temp_value = Marshal.ReadInt32(origin, (int)offset);
-						offset += sizeof(int);
-						temp = offset; // store origin of data
-						data = Array.CreateInstance(typeof(long), (temp_value - offset) / sizeof(long));
-						for (; offset < temp_value; offset += sizeof(long))
-						{
-							data.SetValue(Marshal.ReadInt64(origin, (int)offset), (offset - temp) / sizeof(long));
-						}
-						temp = data;
-						break;
-					case "single":
-						temp = BitConverter.ToSingle(BitConverter.GetBytes(Marshal.ReadInt32(origin, (int)offset)));
-						offset += sizeof(float);
-						break;
-					case "single[]":
-						temp_value = Marshal.ReadInt32(origin, (int)offset);
-						offset += sizeof(int);
-						temp = offset; // store origin of data
-						data = Array.CreateInstance(typeof(float), (temp_value - offset) / sizeof(float));
-						for (; offset < temp_value; offset += sizeof(float))
-						{
-							data.SetValue(BitConverter.ToSingle(BitConverter.GetBytes(Marshal.ReadInt32(origin, (int)offset))), (offset - temp) / sizeof(float));
-						}
-						temp = data;
-						break;
-					case "double":
-						temp = BitConverter.ToDouble(BitConverter.GetBytes(Marshal.ReadInt32(origin, (int)offset)));
-						offset += sizeof(double);
-						break;
-					case "double[]":
-						temp_value = Marshal.ReadInt32(origin, (int)offset);
-						offset += sizeof(int);
-						temp = offset; // store origin of data
-						data = Array.CreateInstance(typeof(double), (temp_value - offset) / sizeof(double));
-						for (; offset < temp_value; offset += sizeof(double))
-						{
-							data.SetValue(BitConverter.ToDouble(BitConverter.GetBytes(Marshal.ReadInt32(origin, (int)offset))), (offset - temp) / sizeof(double));
-						}
-						temp = data;
-						break;
-					case "string":
-						// allocate an array of 4 bytes
-						byte[] array = new byte[sizeof(int)];
-						// the array's current index
-						int index = 0;
-						// the next byte to read from memory
-						byte array_temp;
-						// store the current offset
-						int temp_offset = (int)offset;
-						// read until 0
-						do
-						{
-							array_temp = Marshal.ReadByte(origin, temp_offset);
-							// increment the temporary offset
-							temp_offset++;
-							// if the current index is too large
-							if (index >= array.Length)
-							{
-								// allocate another 4 bytes
-								Array.Resize(ref array, array.Length + sizeof(int));
-							}
-							// set the index to the read value
-							array[index++] = array_temp;
-						}
-						while (array_temp != 0);
-						// translate the bytes to a string
-						temp = Program.shift_jis.GetString(array);
-						// increment the real offset by the length of the string
-						offset += array.Length;
-						break;
-					default:
-						if (field.FieldType.BaseType != null && field.FieldType.BaseType.Name == "Ptr_Custom`1")
-						{
-							object[] args = new object[] { origin, offset };
-							temp = Activator.CreateInstance(field.FieldType, args);
-							offset = (long)args[1];
-							Dictionary<IntPtr, byte[]> handler = temp.Handle();
-							foreach ((IntPtr pos, byte[] arr) in handler)
-							{
-								if (!_ptr_data.ContainsKey(pos))
-								{
-									Print($"Locking 0x{(long)pos - (long)origin:X} to {arr.ArrayToString()}...");
-									_ptr_data.Add(pos, arr);
-								}
-								else
-								{
-									Print($"Offset 0x{(long)pos - (long)origin:X} is already locked...");
-								}
-							}
-							break;
-						}
-						throw new Exception($"Unhandled type: {field.FieldType.Name.ToLowerInvariant()}");
+					return false;
 				}
-				field.SetValue(result, temp);
+				ref_value = value;
+				field.SetValueDirect(tref, ref_value);
 			}
 			return true;
+		}
+
+		public bool TryReadField(IntPtr origin, ref long offset, int end_of_03, Type type, out dynamic value)
+		{
+			if ((type.IsPrimitive || type.Name.Equals("String")) && TryReadPrimitive(origin, ref offset, type, out value))
+			{
+				return true;
+			}
+			else if ((type.IsArray || type.Name.Contains("List") || type.Name.Contains("Dictionary")) && TryReadArray(origin, ref offset, end_of_03, type, out value))
+			{
+				return true;
+			}
+			else if (type.IsValueType && !type.IsEnum)
+			{
+				if (!TryReadClass(origin, ref offset, end_of_03, type, out value))
+				{
+					return false;
+				}
+				return true;
+			}
+			else if (type.IsClass)
+			{
+				long ret_offset = offset + sizeof(int);
+				offset = Marshal.ReadInt32(origin, (int)offset);
+				if (!TryReadClass(origin, ref offset, end_of_03, type, out value))
+				{
+					return false;
+				}
+				offset = ret_offset;
+				return true;
+			}
+			else
+			{
+				value = null;
+				return false;
+			}
+		}
+
+		public bool TryReadArray(IntPtr origin, ref long offset, int end_of_03, Type type, out dynamic value)
+		{
+			switch (type.Name.ToLowerInvariant())
+			{
+				case "list_s`1":
+					{
+						// read all the pointers to types in the list
+						List<int> ptrs = new();
+						do
+						{
+							ptrs.Add(Marshal.ReadInt32(origin, (int)offset));
+							offset += sizeof(int);
+						}
+						while (offset < ptrs[0] && Marshal.ReadInt32(origin, (int)offset) != 0);
+						long ret_offset = offset + sizeof(int);
+						// initialize the list
+						dynamic list = Activator.CreateInstance(type);
+						// iterate over the pointers
+						for (int i = 0; i < ptrs.Count; i++)
+						{
+							// jump to the pointer's position
+							offset = ptrs[i];
+							// if the current pointer position was already read before, point to it
+							IntPtr ptr = new((long)origin + offset);
+							if (_ptr_data.ContainsKey(ptr))
+							{
+								list.Add(_ptr_data[ptr]);
+								continue;
+							}
+							// attempt to read the data recursively
+							if (!TryReadField(origin, ref offset, end_of_03, type.GetGenericArguments()[0], out dynamic obj))
+							{
+								// if it fails, the return chain begins
+								value = null;
+								return false;
+							}
+							_ptr_data.Add(ptr, obj);
+							// if it succeeds, add it to the list
+							list.Add(obj);
+						}
+						// jump to the last indexed position
+						offset = ret_offset;
+						value = list;
+						return true;
+					}
+				case "list_se`1":
+					{
+						int start = Marshal.ReadInt32(origin, (int)offset);
+						offset += sizeof(int);
+						int end = Marshal.ReadInt32(origin, (int)offset);
+						offset += sizeof(int);
+						long ret_offset = offset;
+						dynamic list = Activator.CreateInstance(type);
+						for (offset = start; offset < end && offset < end_of_03;)
+						{
+							IntPtr ptr = new((long)origin + offset);
+							if (_ptr_data.ContainsKey(ptr))
+							{
+								list.Add(_ptr_data[ptr]);
+								offset += Utils.Size(_ptr_data[ptr]);
+								continue;
+							}
+							if (!TryReadField(origin, ref offset, end_of_03, type.GetGenericArguments()[0], out dynamic obj))
+							{
+								value = null;
+								return false;
+							}
+							list.Add(obj);
+							_ptr_data.Add(ptr, obj);
+						}
+						offset = ret_offset;
+						value = list;
+						return true;
+					}
+				case "list_sp`1":
+					{
+						int start = Marshal.ReadInt32(origin, (int)offset);
+						offset += sizeof(int);
+						int end = Marshal.ReadInt32(origin, (int)offset);
+						offset += sizeof(int);
+						IntPtr ptr = new((long)origin + start);
+						if (_ptr_data.ContainsKey(ptr))
+						{
+							value = _ptr_data[ptr];
+							return true;
+						}
+						dynamic list = Activator.CreateInstance(type);
+						for (offset = start; offset < end && offset < end_of_03;)
+						{
+							if (!TryReadField(origin, ref offset, end_of_03, type.GetGenericArguments()[0], out dynamic obj))
+							{
+								value = null;
+								return false;
+							}
+							list.Add(obj);
+						}
+						offset = end;
+						_ptr_data.Add(ptr, list);
+						value = list;
+						return true;
+					}
+				case "list_ep`1":
+					{
+						int end = Marshal.ReadInt32(origin, (int)offset);
+						offset += sizeof(int);
+						int padded = Marshal.ReadInt32(origin, (int)offset);
+						offset += sizeof(int);
+						IntPtr ptr = new((long)origin + offset);
+						if (_ptr_data.ContainsKey(ptr))
+						{
+							value = _ptr_data[ptr];
+							return true;
+						}
+						dynamic list = Activator.CreateInstance(type);
+						while (offset < end && offset < end_of_03)
+						{
+							if (!TryReadField(origin, ref offset, end_of_03, type.GetGenericArguments()[0], out dynamic obj))
+							{
+								value = null;
+								return false;
+							}
+							list.Add(obj);
+						}
+						offset = padded;
+						_ptr_data.Add(ptr, list);
+						value = list;
+						return true;
+					}
+				case "list_ce`1":
+					{
+						int count = Marshal.ReadInt32(origin, (int)offset);
+						offset += sizeof(int);
+						int end = Marshal.ReadInt32(origin, (int)offset);
+						offset += sizeof(int);
+						IntPtr ptr = new((long)origin + offset);
+						if (_ptr_data.ContainsKey(ptr))
+						{
+							value = _ptr_data[ptr];
+							return true;
+						}
+						dynamic list = Activator.CreateInstance(type);
+						for (int i = 0; i < count; i++)
+						{
+							if (!TryReadField(origin, ref offset, end_of_03, type.GetGenericArguments()[0], out dynamic obj))
+							{
+								value = null;
+								return false;
+							}
+							list.Add(obj);
+						}
+						offset = end;
+						_ptr_data.Add(ptr, list);
+						value = list;
+						return true;
+					}
+				case "list_c`1":
+					{
+						long ret_offset = offset + sizeof(int);
+						offset = Marshal.ReadInt32(origin, (int)offset);
+						IntPtr ptr = new((long)origin + offset);
+						if (_ptr_data.ContainsKey(ptr))
+						{
+							value = _ptr_data[ptr];
+							offset = ret_offset;
+							return true;
+						}
+						Type generic = type.GetGenericArguments()[0];
+						if (!TryReadPrimitive(origin, ref offset, generic, out dynamic count))
+						{
+							value = null;
+							return false;
+						}
+						dynamic list = Activator.CreateInstance(type);
+						for (int i = 0; i < count; i++)
+						{
+							if (!TryReadField(origin, ref offset, end_of_03, generic, out dynamic obj))
+							{
+								value = null;
+								return false;
+							}
+							list.Add(obj);
+						}
+						_ptr_data.Add(ptr, list);
+						value = list;
+						offset = ret_offset;
+						return true;
+					}
+				case "list_e`1":
+					{
+						int end = Marshal.ReadInt32(origin, (int)offset);
+						offset += sizeof(int);
+						IntPtr ptr = new((long)origin + offset);
+						if (_ptr_data.ContainsKey(ptr))
+						{
+							value = _ptr_data[ptr];
+							return true;
+						}
+						dynamic list = Activator.CreateInstance(type);
+						while (offset < end && offset < end_of_03)
+						{
+							if (!TryReadField(origin, ref offset, end_of_03, type.GetGenericArguments()[0], out dynamic obj))
+							{
+								value = null;
+								return false;
+							}
+							list.Add(obj);
+						}
+						offset = end;
+						_ptr_data.Add(ptr, list);
+						value = list;
+						return true;
+					}
+				case "list`1":
+					{
+						// read all the pointers to types in the list
+						List<int> ptrs = new();
+						do
+						{
+							ptrs.Add(Marshal.ReadInt32(origin, (int)offset));
+							offset += sizeof(int);
+						}
+						while (offset < ptrs[0] && Marshal.ReadInt32(origin, (int)offset) != 0);
+						// initialize the list
+						dynamic list = Activator.CreateInstance(type);
+						// iterate over the pointers
+						for (int i = 0; i < ptrs.Count - 1; i++)
+						{
+							// jump to the pointer's position
+							offset = ptrs[i];
+							// if the current pointer position was already read before, point to it
+							IntPtr ptr = new((long)origin + offset);
+							if (_ptr_data.ContainsKey(ptr))
+							{
+								list.Add(_ptr_data[ptr]);
+								continue;
+							}
+							// attempt to read the data recursively
+							if (!TryReadField(origin, ref offset, end_of_03, type.GetGenericArguments()[0], out dynamic obj))
+							{
+								// if it fails, the return chain begins
+								value = null;
+								return false;
+							}
+							_ptr_data.Add(ptr, obj);
+							// if it succeeds, add it to the list
+							list.Add(obj);
+						}
+						// jump to the last indexed position
+						offset = ptrs[^1];
+						value = list;
+						return true;
+					}
+				case "dictionary`2":
+					{
+						dynamic dictionary = Activator.CreateInstance(type);
+						while (offset < end_of_03)
+						{
+							int existing_instance = Marshal.ReadInt32(origin, (int)offset);
+							offset += sizeof(int);
+							if (existing_instance == 0)
+							{
+								break;
+							}
+							Type[] generics = type.GetGenericArguments();
+							if (!TryReadField(origin, ref offset, end_of_03, generics[0], out dynamic key))
+							{
+								value = null;
+								return false;
+							}
+							if (!TryReadField(origin, ref offset, end_of_03, generics[1], out dynamic val))
+							{
+								value = null;
+								return false;
+							}
+							dictionary.Add(key, val);
+						}
+						value = dictionary;
+						return true;
+					}
+				case "list_max_terminated`1":
+					{
+						Type generic = type.GetGenericArguments()[0];
+						FieldInfo mv_field = generic.GetField("MaxValue");
+						dynamic max_value;
+						if (mv_field != null && mv_field.IsLiteral && !mv_field.IsInitOnly)
+						{
+							max_value = mv_field.GetRawConstantValue();
+						}
+						else
+						{
+							value = null;
+							return false;
+						}
+						dynamic list = Activator.CreateInstance(type);
+						while (offset < end_of_03)
+						{
+							if (!TryReadField(origin, ref offset, end_of_03, generic, out dynamic obj))
+							{
+								value = null;
+								return false;
+							}
+							list.Add(obj);
+							if (obj == max_value)
+							{
+								break;
+							}
+						}
+						value = list;
+						return true;
+					}
+				default:
+					{
+						Type element_type = type.GetElementType();
+						dynamic list = Activator.CreateInstance(typeof(List<>).MakeGenericType(element_type));
+						do
+						{
+							if (!TryReadField(origin, ref offset, end_of_03, element_type, out dynamic obj))
+							{
+								value = null;
+								return false;
+							}
+							if (obj.Equals(0) && list.Count > 0)
+							{
+								break;
+							}
+							list.Add(obj);
+						}
+						while (offset < end_of_03);
+						value = list.ToArray();
+						return true;
+					}
+			}
+		}
+
+		public static bool TryReadPrimitive(IntPtr origin, ref long offset, Type type, out dynamic value)
+		{
+			switch (type.Name.ToLowerInvariant())
+			{
+				case "byte":
+					{
+						value = Marshal.ReadByte(origin, (int)offset);
+						offset++;
+						return true;
+					}
+				case "sbyte":
+					{
+						value = (sbyte)Marshal.ReadByte(origin, (int)offset);
+						offset++;
+						return true;
+					}
+				case "bool":
+					{
+						value = Marshal.ReadInt32(origin, (int)offset) == 1;
+						offset++;
+						return true;
+					}
+				case "uint16":
+					{
+						value = (ushort)Marshal.ReadInt16(origin, (int)offset);
+						offset += sizeof(ushort);
+						return true;
+					}
+				case "int16":
+					{
+						value = Marshal.ReadInt16(origin, (int)offset);
+						offset += sizeof(short);
+						return true;
+					}
+				case "uint32":
+					{
+						value = (uint)Marshal.ReadInt32(origin, (int)offset);
+						offset += sizeof(uint);
+						return true;
+					}
+				case "int32":
+					{
+						value = Marshal.ReadInt32(origin, (int)offset);
+						offset += sizeof(int);
+						return true;
+					}
+				case "uint64":
+					{
+						value = (ulong)Marshal.ReadInt64(origin, (int)offset);
+						offset += sizeof(ulong);
+						return true;
+					}
+				case "int64":
+					{
+						value = Marshal.ReadInt64(origin, (int)offset);
+						offset += sizeof(long);
+						return true;
+					}
+				case "char":
+					{
+						byte[] bytes = new byte[] { Marshal.ReadByte(origin, (int)offset) };
+						offset++;
+						value = Program.shift_jis.GetChars(bytes)[0];
+						return true;
+					}
+				case "string":
+					{
+						byte[] bytes = Array.Empty<byte>();
+						byte temp_byte;
+						while (true)
+						{
+							temp_byte = Marshal.ReadByte(origin, (int)offset);
+							offset++;
+							if (temp_byte == 0)
+							{
+								while (Marshal.ReadByte(origin, (int)offset) == 0 && offset % sizeof(int) != 0)
+								{
+									offset++;
+								}
+								break;
+							}
+							Array.Resize(ref bytes, bytes.Length + 1);
+							bytes[^1] = temp_byte;
+						}
+						value = Program.shift_jis.GetString(bytes);
+						return true;
+					}
+				case "single":
+					{
+						value = Convert.ToSingle(Marshal.ReadInt32(origin, (int)offset));
+						offset += sizeof(float);
+						return true;
+					}
+				case "double":
+					{
+						value = Convert.ToDouble(Marshal.ReadInt64(origin, (int)offset));
+						offset += sizeof(double);
+						return true;
+					}
+			}
+			value = null;
+			return false;
 		}
 
 		/// <summary>
@@ -438,73 +720,26 @@ namespace CharaReader.data
 		/// </summary>
 		/// <typeparam name="T"></typeparam>
 		/// <param name="obj"></param>
-		private static void Print<T>(in T obj) where T : notnull
+		private void Print<T>(in T obj) where T : notnull
 		{
-			Console.Out.Write(obj);
+			string str = Utils.ConvertToString(obj);
+			logger.Write(str);
+			Console.Out.Write(str);
 		}
+	}
 
-		/// <summary>
-		/// Convert a <see cref="DataType"/> ID to a <see cref="Type"/> instance.
-		/// </summary>
-		/// <param name="data_type">The ID to convert.</param>
-		/// <returns></returns>
-		/// <exception cref="Exception">If the ID is invalid or unhandled.</exception>
-		public static Type NewDataType(DataType data_type)
-		{
-			// try to parse the object using the name of the DataType
-			if (EnumToType(data_type, out Type type))
-			{
-				// return the type from Assembly
-				return type;
-			}
-			return null;
-		}
-
-		public static bool TypeToEnum<T>(object o, out T value) where T : struct
-		{
-			string name = o.GetType().Name;
-			string real_name = "";
-			for (int i = 0; i < name.Length; i++)
-			{
-				if (char.IsUpper(name[i]))
-				{
-					real_name += '_';
-				}
-				real_name += char.ToUpper(name[i]);
-			}
-			return Enum.TryParse(real_name, out value);
-		}
-
-		public static bool EnumToType<T>(in T value, out Type o) where T : struct
-		{
-			// store the name of the value
-			string name = $"{value}";
-			string real_name = "";
-			string[] sections = name.Split('_');
-			for (int i = 0; i < sections.Length; i++)
-			{
-				if (sections[i].Length == 0)
-				{
-					real_name += "_";
-					continue;
-				}
-				else if (byte.TryParse(sections[i], NumberStyles.HexNumber, null, out _))
-				{
-					real_name += sections[i];
-				}
-				else
-				{
-					real_name += $"{char.ToUpperInvariant(sections[i][0])}{sections[i][1..].ToLowerInvariant()}";
-				}
-
-				if (i + 1 < sections.Length)
-				{
-					real_name += "_";
-				}
-			}
-			o = Assembly.GetExecutingAssembly().GetTypes().FirstOrDefault(a => a.IsClass && !a.IsAbstract && a.Name == real_name);
-			return o != null;
-		}
+	public enum SubDataType : byte
+	{
+		NONE,
+		UNK_01 = 0x01,
+		UNK_03 = 0x03,
+		UNK_06 = 0x06,
+		UNK_07 = 0x07,
+		UNK_09 = 0x09,
+		UNK_0C = 0x0C,
+		UNK_11 = 0x11,
+		UNK_1A = 0x1A,
+		COUNT = 0xFF
 	}
 
 	public enum DataType : byte
@@ -542,9 +777,9 @@ namespace CharaReader.data
 		UNK_46 = 0x46,
 		UNK_47 = 0x47,
 		UNK_48 = 0x48,
-		UNK_49 = 0x49,
-		NPC_TEXT_LIST = 0x4A,
-		NPC_TEXT = 0x4B,
+		//UNK_49 = 0x49,
+		//NPC_TEXT_LIST = 0x4A,
+		//NPC_TEXT = 0x4B,
 		UNK_4C = 0x4C,
 		UNK_4D = 0x4D,
 		UNK_4E = 0x4E,
@@ -561,7 +796,7 @@ namespace CharaReader.data
 		WEAPON_MODEL = 0x59,
 		WEAPON_DESCRIPTIONS = 0x5A,
 		UNK_5B = 0x5B,
-		UNK_5C = 0x5C,
+		//UNK_5C = 0x5C,
 		UNK_5D = 0x5D,
 		SHIELD = 0x5E,
 		SHIELD_MODEL = 0x5F,
@@ -604,7 +839,7 @@ namespace CharaReader.data
 		UNK_85 = 0x85,
 		SPACE_EFFECT = 0x86,
 		SPACE = 0x87,
-		SPACE_DATA = 0x88,
+		SPACE_DESCRIPTIONS = 0x88,
 		ITEM_TYPE = 0x89,
 		MAGIC_TYPE = 0x8A,
 		MAGIC_ELEMENT = 0x8B,
@@ -629,10 +864,10 @@ namespace CharaReader.data
 		UNK_A5 = 0xA5,
 		UNK_AC = 0xAC,
 		UNK_AD = 0xAD,
-		UNK_AE = 0xAE, // battle system text
-		UNK_AF = 0xAF, // battle system text part 2
+		//UNK_AE = 0xAE, // battle system text
+		//UNK_AF = 0xAF, // battle system text part 2
 		UNK_BF = 0xBF,
-		UNK_C0 = 0xC0,
+		//UNK_C0 = 0xC0,
 		ITEM_D0 = 0xD0,
 		MAGIC_D1 = 0xD1,
 		UNK_D2 = 0xD2,
@@ -648,7 +883,9 @@ namespace CharaReader.data
 		UNK_DF = 0xDF,
 		UNK_E0 = 0xE0,
 		UNK_E1 = 0xE1,
-		UNK_E2 = 0xE2,
+		//UNK_E2 = 0xE2,
 		COUNT = 0xFF
 	}
+	/* 
+	 */
 }

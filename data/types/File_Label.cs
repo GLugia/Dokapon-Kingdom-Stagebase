@@ -1,7 +1,7 @@
 ﻿namespace CharaReader.data
 {
-	public class File_Label
+	public unsafe class File_Label
 	{
-		public char[] label;
+		public List_E<char> label;
 	}
 }

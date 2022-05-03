@@ -2,6 +2,6 @@
 {
 	public class Magic_D4
 	{
-		public byte[] data;
+		public List_CE<byte> data;
 	}
 }

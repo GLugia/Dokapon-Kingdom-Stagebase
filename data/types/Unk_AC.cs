@@ -1,10 +1,10 @@
-﻿using CharaReader.data.ptrs;
+﻿using CharaReader.data.types.subtypes;
 
 namespace CharaReader.data.types
 {
 	public class Unk_AC
 	{
 		public int id;
-		public Ptr_Texture ptr;
+		public Ptr<Unk_AC_Data> data;
 	}
 }
