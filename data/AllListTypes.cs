@@ -4,7 +4,7 @@
 	/// A list of values with pointers labeling the (S)tart positions
 	/// </summary>
 	/// <typeparam name="T"></typeparam>
-	//public class List_S<T> : List_Base<T> { }
+	public class List_S<T> : List_Base<T> { }
 	/// <summary>
 	/// A list of values with pointers labeling the (S)tart and (E)nd positions
 	/// </summary>

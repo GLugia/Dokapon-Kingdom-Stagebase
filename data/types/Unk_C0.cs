@@ -8,7 +8,7 @@ namespace CharaReader.data.types
 {
 	public class Unk_C0
 	{
-		public Ptr<List<string>> data;
+		public Ptr<List_S<string>> data;
 		public int do_not_use_this_ptr;
 	}
 }

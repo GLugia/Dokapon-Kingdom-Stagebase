@@ -25,8 +25,8 @@ namespace CharaReader.data
 		 * its contents but also let us use named fields to access
 		 * the existing bytes
 		 */
-		private SortedDictionary<IntPtr, dynamic> _ptr_data;
-		public IReadOnlyDictionary<IntPtr, dynamic> ptr_data => _ptr_data;
+		private SortedDictionary<IntPtr, PtrData> _ptr_data;
+		public IReadOnlyDictionary<IntPtr, PtrData> ptr_data => _ptr_data;
 
 		public Stagebase()
 		{
@@ -110,7 +110,7 @@ namespace CharaReader.data
 			}
 			Print("Initializing data...");
 			// initialize the dictionary of types
-			_ptr_data = new SortedDictionary<IntPtr, dynamic>();
+			_ptr_data = new SortedDictionary<IntPtr, PtrData>();
 			_struct_data = new SortedDictionary<DataType, List<object>>();
 			// iterate over all data types
 			for (byte i = 1; i < (byte)DataType.COUNT; i++)
@@ -128,25 +128,25 @@ namespace CharaReader.data
 			for (long offset = Marshal.ReadInt32(ptr.header);
 				offset < Marshal.ReadInt32(ptr.length);)
 			{
+				// re-align the offset to int
+				if (offset % sizeof(int) != 0)
+				{
+					offset += sizeof(int) - (offset % sizeof(int));
+					continue;
+				}
 				IntPtr position = (IntPtr)((long)ptr.origin + offset);
 				// if this offset is a referenced ptr, we want to skip over its contained data.
 				if (_ptr_data.ContainsKey(position))
 				{
-					if (_ptr_data[position] == null)
+					if (_ptr_data[position] == null || _ptr_data[position].ref_obj == null)
 					{
-						throw new NullReferenceException($"{position}");
+						Print($">>>>>>>> ERROR: {(long)position:X} / {offset:X} <<<<<<<<");
+						return false;
 					}
 					// skip the data held in this array
 					Print($"Skipping locked offset: 0x{offset:X}\n");
-					int size = Utils.Size(_ptr_data[position]);
-					offset += size;
+					offset += _ptr_data[position].size;
 					// restart the loop to check if the next offset is also a referenced ptr
-					continue;
-				}
-				// if this offset is not a referenced ptr, re-align the offset to int
-				if (offset % sizeof(int) != 0)
-				{
-					offset += sizeof(int) - (offset % sizeof(int));
 					continue;
 				}
 
@@ -226,16 +226,27 @@ namespace CharaReader.data
 
 		public bool TryReadClass(IntPtr origin, ref long offset, int end_of_03, Type type, out dynamic result)
 		{
+			// store the offset of this type
+			long origin_offset = offset;
+			// create a new instance of the type
 			result = Activator.CreateInstance(type);
+			// the type we create is not always a ref value so we need to make one
+			// this won't throw an error if the type is already a ref value
 			TypedReference tref = __makeref(result);
+			// dynamics are not ref values for some reason so we need to store the resulting value in an object
 			object ref_value;
+			// iterate over the fields in this instance
 			foreach (FieldInfo field in result.GetType().GetFields())
 			{
+				// attempt to read the data at the current offset as the field's type
 				if (!TryReadField(origin, ref offset, end_of_03, field.FieldType, out dynamic value))
 				{
+					// if we fail, end the recursion
 					return false;
 				}
+				// store the resulting value in the object
 				ref_value = value;
+				// set the field's value to the object
 				field.SetValueDirect(tref, ref_value);
 			}
 			return true;
@@ -243,36 +254,57 @@ namespace CharaReader.data
 
 		public bool TryReadField(IntPtr origin, ref long offset, int end_of_03, Type type, out dynamic value)
 		{
+			// if the type is a primitive value or a string, read it as such
 			if ((type.IsPrimitive || type.Name.Equals("String")) && TryReadPrimitive(origin, ref offset, type, out value))
 			{
 				return true;
 			}
+			// if the type is an array or some form of an array type, read it as such
 			else if ((type.IsArray || type.Name.Contains("List") || type.Name.Contains("Dictionary")) && TryReadArray(origin, ref offset, end_of_03, type, out value))
 			{
 				return true;
 			}
-			else if (type.IsValueType && !type.IsEnum)
+			// if the type is a struct, read it as a class immediately
+			else if (type.IsValueType && !type.IsEnum && TryReadClass(origin, ref offset, end_of_03, type, out value))
 			{
-				if (!TryReadClass(origin, ref offset, end_of_03, type, out value))
-				{
-					return false;
-				}
 				return true;
 			}
+			// if the type is a class
 			else if (type.IsClass)
 			{
-				long ret_offset = offset + sizeof(int);
-				offset = Marshal.ReadInt32(origin, (int)offset);
+				// read the pointer
+				int target_offset = Marshal.ReadInt32(origin, (int)offset);
+				offset += sizeof(int);
+				// check if the object at the target offset exists already
+				IntPtr ptr = new((long)origin + target_offset);
+				if (_ptr_data.ContainsKey(ptr))
+				{
+					// if it does, point to it and stop here
+					value = _ptr_data[ptr].ref_obj;
+					return true;
+				}
+				// if it doesn't, store the current offset
+				long ret_offset = offset;
+				// jump to the pointer
+				offset = target_offset;
+				// and try to read it as a class
 				if (!TryReadClass(origin, ref offset, end_of_03, type, out value))
 				{
+					// if it fails, stop the recursion
 					return false;
 				}
+				// if it succeeds, add the resulting value to the list of pointers
+				_ptr_data[ptr] = new PtrData(value, offset - target_offset);
+				// and jump back to the stored offset
 				offset = ret_offset;
 				return true;
 			}
+			// if the type is anything else
 			else
 			{
+				// set the value to null
 				value = null;
+				// and stop the recursion
 				return false;
 			}
 		}
@@ -291,21 +323,23 @@ namespace CharaReader.data
 							offset += sizeof(int);
 						}
 						while (offset < ptrs[0] && Marshal.ReadInt32(origin, (int)offset) != 0);
-						long ret_offset = offset + sizeof(int);
 						// initialize the list
 						dynamic list = Activator.CreateInstance(type);
 						// iterate over the pointers
 						for (int i = 0; i < ptrs.Count; i++)
 						{
-							// jump to the pointer's position
-							offset = ptrs[i];
-							// if the current pointer position was already read before, point to it
-							IntPtr ptr = new((long)origin + offset);
+							// check if the object at this position was already created
+							IntPtr ptr = new((long)origin + ptrs[i]);
 							if (_ptr_data.ContainsKey(ptr))
 							{
-								list.Add(_ptr_data[ptr]);
+								// if it does, reference it and skip over its contents
+								Print($"Skipping locked offset: 0x{offset:X}\n");
+								list.Add(_ptr_data[ptr].ref_obj);
+								offset += _ptr_data[ptr].size;
 								continue;
 							}
+							// jump to the pointer's position
+							offset = ptrs[i];
 							// attempt to read the data recursively
 							if (!TryReadField(origin, ref offset, end_of_03, type.GetGenericArguments()[0], out dynamic obj))
 							{
@@ -313,12 +347,11 @@ namespace CharaReader.data
 								value = null;
 								return false;
 							}
-							_ptr_data.Add(ptr, obj);
+							offset += sizeof(int) - (offset % sizeof(int));
+							_ptr_data[ptr] = new PtrData(obj, offset - ptrs[i]);
 							// if it succeeds, add it to the list
 							list.Add(obj);
 						}
-						// jump to the last indexed position
-						offset = ret_offset;
 						value = list;
 						return true;
 					}
@@ -330,22 +363,30 @@ namespace CharaReader.data
 						offset += sizeof(int);
 						long ret_offset = offset;
 						dynamic list = Activator.CreateInstance(type);
+						long previous_offset;
 						for (offset = start; offset < end && offset < end_of_03;)
 						{
+							if (offset % sizeof(int) != 0)
+							{
+								offset += sizeof(int) - (offset % sizeof(int));
+							}
 							IntPtr ptr = new((long)origin + offset);
 							if (_ptr_data.ContainsKey(ptr))
 							{
-								list.Add(_ptr_data[ptr]);
-								offset += Utils.Size(_ptr_data[ptr]);
+								Print($"Skipping locked offset: 0x{offset:X}\n");
+								list.Add(_ptr_data[ptr].ref_obj);
+								offset += _ptr_data[ptr].size;
 								continue;
 							}
+							previous_offset = offset;
 							if (!TryReadField(origin, ref offset, end_of_03, type.GetGenericArguments()[0], out dynamic obj))
 							{
 								value = null;
 								return false;
 							}
+							offset += sizeof(int) - (offset % sizeof(int));
+							_ptr_data[ptr] = new PtrData(obj, offset - previous_offset);
 							list.Add(obj);
-							_ptr_data.Add(ptr, obj);
 						}
 						offset = ret_offset;
 						value = list;
@@ -357,24 +398,28 @@ namespace CharaReader.data
 						offset += sizeof(int);
 						int end = Marshal.ReadInt32(origin, (int)offset);
 						offset += sizeof(int);
-						IntPtr ptr = new((long)origin + start);
-						if (_ptr_data.ContainsKey(ptr))
-						{
-							value = _ptr_data[ptr];
-							return true;
-						}
 						dynamic list = Activator.CreateInstance(type);
+						long previous_offset;
 						for (offset = start; offset < end && offset < end_of_03;)
 						{
+							IntPtr ptr = new((long)origin + offset);
+							if (_ptr_data.ContainsKey(ptr))
+							{
+								Print($"Skipping locked offset: 0x{offset:X}\n");
+								list.Add(_ptr_data[ptr].ref_obj);
+								offset += _ptr_data[ptr].size;
+								continue;
+							}
+							previous_offset = offset;
 							if (!TryReadField(origin, ref offset, end_of_03, type.GetGenericArguments()[0], out dynamic obj))
 							{
 								value = null;
 								return false;
 							}
+							_ptr_data[ptr] = new PtrData(obj, offset - previous_offset);
 							list.Add(obj);
 						}
 						offset = end;
-						_ptr_data.Add(ptr, list);
 						value = list;
 						return true;
 					}
@@ -384,24 +429,28 @@ namespace CharaReader.data
 						offset += sizeof(int);
 						int padded = Marshal.ReadInt32(origin, (int)offset);
 						offset += sizeof(int);
-						IntPtr ptr = new((long)origin + offset);
-						if (_ptr_data.ContainsKey(ptr))
-						{
-							value = _ptr_data[ptr];
-							return true;
-						}
 						dynamic list = Activator.CreateInstance(type);
+						long previous_offset;
 						while (offset < end && offset < end_of_03)
 						{
+							IntPtr ptr = new((long)origin + offset);
+							if (_ptr_data.ContainsKey(ptr))
+							{
+								Print($"Skipping locked offset: 0x{offset:X}\n");
+								list.Add(_ptr_data[ptr].ref_obj);
+								offset += _ptr_data[ptr].size;
+								continue;
+							}
+							previous_offset = offset;
 							if (!TryReadField(origin, ref offset, end_of_03, type.GetGenericArguments()[0], out dynamic obj))
 							{
 								value = null;
 								return false;
 							}
+							_ptr_data[ptr] = new PtrData(obj, offset - previous_offset);
 							list.Add(obj);
 						}
 						offset = padded;
-						_ptr_data.Add(ptr, list);
 						value = list;
 						return true;
 					}
@@ -411,12 +460,6 @@ namespace CharaReader.data
 						offset += sizeof(int);
 						int end = Marshal.ReadInt32(origin, (int)offset);
 						offset += sizeof(int);
-						IntPtr ptr = new((long)origin + offset);
-						if (_ptr_data.ContainsKey(ptr))
-						{
-							value = _ptr_data[ptr];
-							return true;
-						}
 						dynamic list = Activator.CreateInstance(type);
 						for (int i = 0; i < count; i++)
 						{
@@ -428,7 +471,6 @@ namespace CharaReader.data
 							list.Add(obj);
 						}
 						offset = end;
-						_ptr_data.Add(ptr, list);
 						value = list;
 						return true;
 					}
@@ -436,13 +478,6 @@ namespace CharaReader.data
 					{
 						long ret_offset = offset + sizeof(int);
 						offset = Marshal.ReadInt32(origin, (int)offset);
-						IntPtr ptr = new((long)origin + offset);
-						if (_ptr_data.ContainsKey(ptr))
-						{
-							value = _ptr_data[ptr];
-							offset = ret_offset;
-							return true;
-						}
 						Type generic = type.GetGenericArguments()[0];
 						if (!TryReadPrimitive(origin, ref offset, generic, out dynamic count))
 						{
@@ -459,7 +494,6 @@ namespace CharaReader.data
 							}
 							list.Add(obj);
 						}
-						_ptr_data.Add(ptr, list);
 						value = list;
 						offset = ret_offset;
 						return true;
@@ -468,12 +502,6 @@ namespace CharaReader.data
 					{
 						int end = Marshal.ReadInt32(origin, (int)offset);
 						offset += sizeof(int);
-						IntPtr ptr = new((long)origin + offset);
-						if (_ptr_data.ContainsKey(ptr))
-						{
-							value = _ptr_data[ptr];
-							return true;
-						}
 						dynamic list = Activator.CreateInstance(type);
 						while (offset < end && offset < end_of_03)
 						{
@@ -485,7 +513,6 @@ namespace CharaReader.data
 							list.Add(obj);
 						}
 						offset = end;
-						_ptr_data.Add(ptr, list);
 						value = list;
 						return true;
 					}
@@ -504,15 +531,16 @@ namespace CharaReader.data
 						// iterate over the pointers
 						for (int i = 0; i < ptrs.Count - 1; i++)
 						{
-							// jump to the pointer's position
-							offset = ptrs[i];
-							// if the current pointer position was already read before, point to it
-							IntPtr ptr = new((long)origin + offset);
+							IntPtr ptr = new((long)origin + ptrs[i]);
 							if (_ptr_data.ContainsKey(ptr))
 							{
-								list.Add(_ptr_data[ptr]);
+								Print($"Skipping locked offset: 0x{offset:X}\n");
+								list.Add(_ptr_data[ptr].ref_obj);
+								offset += _ptr_data[ptr].size;
 								continue;
 							}
+							// jump to the pointer's position
+							offset = ptrs[i];
 							// attempt to read the data recursively
 							if (!TryReadField(origin, ref offset, end_of_03, type.GetGenericArguments()[0], out dynamic obj))
 							{
@@ -520,7 +548,7 @@ namespace CharaReader.data
 								value = null;
 								return false;
 							}
-							_ptr_data.Add(ptr, obj);
+							_ptr_data[ptr] = new PtrData(obj, offset - ptrs[i]);
 							// if it succeeds, add it to the list
 							list.Add(obj);
 						}
@@ -558,6 +586,14 @@ namespace CharaReader.data
 					}
 				case "list_max_terminated`1":
 					{
+						IntPtr ptr = new((long)origin + offset);
+						if (_ptr_data.ContainsKey(ptr))
+						{
+							Print($"Skipping locked offset: 0x{offset:X}\n");
+							value = _ptr_data[ptr].ref_obj;
+							offset += _ptr_data[ptr].size;
+							return true;
+						}
 						Type generic = type.GetGenericArguments()[0];
 						FieldInfo mv_field = generic.GetField("MaxValue");
 						dynamic max_value;
@@ -571,6 +607,7 @@ namespace CharaReader.data
 							return false;
 						}
 						dynamic list = Activator.CreateInstance(type);
+						long previous_offset = offset;
 						while (offset < end_of_03)
 						{
 							if (!TryReadField(origin, ref offset, end_of_03, generic, out dynamic obj))
@@ -584,6 +621,7 @@ namespace CharaReader.data
 								break;
 							}
 						}
+						_ptr_data[ptr] = new PtrData(list, offset - previous_offset);
 						value = list;
 						return true;
 					}
@@ -591,6 +629,7 @@ namespace CharaReader.data
 					{
 						Type element_type = type.GetElementType();
 						dynamic list = Activator.CreateInstance(typeof(List<>).MakeGenericType(element_type));
+						long previous_offset = offset;
 						do
 						{
 							if (!TryReadField(origin, ref offset, end_of_03, element_type, out dynamic obj))
@@ -611,7 +650,7 @@ namespace CharaReader.data
 			}
 		}
 
-		public static bool TryReadPrimitive(IntPtr origin, ref long offset, Type type, out dynamic value)
+		public bool TryReadPrimitive(IntPtr origin, ref long offset, Type type, out dynamic value)
 		{
 			switch (type.Name.ToLowerInvariant())
 			{
@@ -777,9 +816,9 @@ namespace CharaReader.data
 		UNK_46 = 0x46,
 		UNK_47 = 0x47,
 		UNK_48 = 0x48,
-		//UNK_49 = 0x49,
-		//NPC_TEXT_LIST = 0x4A,
-		//NPC_TEXT = 0x4B,
+		UNK_49 = 0x49,
+		NPC_TEXT_LIST = 0x4A,
+		NPC_TEXT = 0x4B,
 		UNK_4C = 0x4C,
 		UNK_4D = 0x4D,
 		UNK_4E = 0x4E,
@@ -796,7 +835,7 @@ namespace CharaReader.data
 		WEAPON_MODEL = 0x59,
 		WEAPON_DESCRIPTIONS = 0x5A,
 		UNK_5B = 0x5B,
-		//UNK_5C = 0x5C,
+		UNK_5C = 0x5C,
 		UNK_5D = 0x5D,
 		SHIELD = 0x5E,
 		SHIELD_MODEL = 0x5F,
@@ -867,7 +906,7 @@ namespace CharaReader.data
 		//UNK_AE = 0xAE, // battle system text
 		//UNK_AF = 0xAF, // battle system text part 2
 		UNK_BF = 0xBF,
-		//UNK_C0 = 0xC0,
+		UNK_C0 = 0xC0,
 		ITEM_D0 = 0xD0,
 		MAGIC_D1 = 0xD1,
 		UNK_D2 = 0xD2,
@@ -883,7 +922,7 @@ namespace CharaReader.data
 		UNK_DF = 0xDF,
 		UNK_E0 = 0xE0,
 		UNK_E1 = 0xE1,
-		//UNK_E2 = 0xE2,
+		UNK_E2 = 0xE2,
 		COUNT = 0xFF
 	}
 	/* 
