@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 
 namespace CharaReader
 {
@@ -20,99 +22,149 @@ namespace CharaReader
 			// if the object is an array
 			if (type.IsArray)
 			{
-				// allocate a return string for an array type
-				string arr_ret = "{ ";
-				// iterate the contents
-				foreach (object obj in val as Array)
-				{
-					// recursively append the value as hex
-					arr_ret += obj.ToHexString(add_0x) + " ";
-				}
-				// return the resulting string
-				return arr_ret + "}";
+				return $"{{ {string.Join(", ", ((object[])val).Select(a => a.ToHexString(add_0x)))} }}";
 			}
-			// if the object is not primitive or a value type
-			if (!(type.IsPrimitive && type.IsValueType))
-			{
-				// return a direct string result
-				return val.ToString();
-			}
-			// allocate the return string and attempt to call ToString("x") which converts the type to hex for us
-			string ret = (add_0x ? "0x" : "") + ((string)type.GetMethod("ToString", new Type[] { typeof(string) }).Invoke(val, new object[] { "X" })).ToUpperInvariant();
-			// determine the alignment size based on the object
 			int size = val switch
 			{
-				char => 2,
-				sbyte => 2,
-				byte => 2,
-				short => 4,
-				ushort => 4,
-				int => 8,
-				uint => 8,
-				long => 16,
-				ulong => 16,
-				float => 8,
-				double => 16,
+				char or byte or sbyte => 1,
+				ushort or short => 2,
+				uint or int or float or bool => 4,
+				ulong or long or double => 8,
 				_ => 0
 			};
-			// while the length of the string is smaller than the alignment size
-			while ((add_0x ? ret.Length - 2 : ret.Length) < size)
+			if (size == 0)
 			{
-				// insert a 0
-				ret = ret.Insert(add_0x ? 2 : 0, "0");
+				return val.ToString();
 			}
-			// return the resulting string
+			if (val is float f)
+			{
+				return BitConverter.ToString(BitConverter.GetBytes(f).Reverse().ToArray()).Replace("-", "");
+			}
+			else if (val is double d)
+			{
+				return BitConverter.ToString(BitConverter.GetBytes(d).Reverse().ToArray()).Replace("-", "");
+			}
+			byte[] bytes = new byte[size];
+			for (int i = 0; i < size; i++)
+			{
+				bytes[i] = (byte)(((dynamic)val >> (8 * i)) & 0xFF);
+			}
+			return $"{(add_0x ? "0x" : "")}{BitConverter.ToString(bytes.Reverse().ToArray()).Replace("-", "")}";
+		}
+
+		public static string ConvertToString(this object obj)
+		{
+			int indent = 0;
+			string ret = RecursiveToString(obj, ref indent);
 			return ret;
 		}
 
-		/// <summary>
-		/// Converts an object to a dynamic string.
-		/// </summary>
-		/// <param name="obj">The object to convert.</param>
-		/// <returns>A string value.</returns>
-		public static string ArrayToString(this object obj)
+		private static string RecursiveToString(object obj, ref int indentation)
 		{
+			string indent = BuildIndent(indentation);
+			if (obj == null)
+			{
+				return "NULL";
+			}
 			Type obj_type = obj.GetType();
-			// if the object is an array
 			if (obj_type.IsArray)
 			{
-				// cast it to the default array class
+				if (obj_type.GetElementType() == typeof(char))
+				{
+					return Program.shift_jis.GetString(((char[])obj).Select(a => (byte)a).ToArray());
+				}
+
 				Array nobj = obj as Array;
-				// initialize a return value
-				string ret = "{ ";
-				// iterate the contents
+
+				if (nobj.Length > 0xFF)
+				{
+					return $"{obj_type.GetElementType().Name}[{nobj.Length:X}]";
+				}
+
+				string ret = $"{obj_type.GetElementType().Name}[{nobj.Length:X}]\n{indent}{{\n";
+				indentation++;
+				indent = BuildIndent(indentation);
 				for (int i = 0; i < nobj?.Length; i++)
 				{
-					// recursively append the resulting string
-					ret += nobj.GetValue(i)?.ArrayToString();
-					// if this index is not the last
+					ret += $"{indent}{RecursiveToString(nobj.GetValue(i), ref indentation)}";
 					if (i != nobj.Length - 1)
 					{
-						// append a comma separator
-						ret += ", ";
+						ret += $",\n";
 					}
 				}
-				// return the resulting string
-				return ret + " }";
+				indentation--;
+				indent = BuildIndent(indentation);
+				ret += $"\n{indent}}}";
+				return ret;
 			}
-			// if the object is a primitive type
-			if (obj_type.IsPrimitive)
+			else if (obj_type.Name.StartsWith("List"))
 			{
-				// return the object as hex
-				return $"{obj.ToHexString(false)}";
+				return RecursiveToString(((dynamic)obj).ToArray(), ref indentation);
 			}
-			if (!obj_type.IsAbstract && !obj_type.IsEnum)
+			else if (obj_type.Name.StartsWith("Dictionary"))
+			{
+				string ret = $"\n{indent}{{\n";
+				indentation++;
+				indent = BuildIndent(indentation);
+				for (int i = 0; i < ((dynamic)obj).Count; i++)
+				{
+					ret += $"{indent}{RecursiveToString(Enumerable.ElementAt(((dynamic)obj).Keys, i), ref indentation)}->{RecursiveToString(Enumerable.ElementAt(((dynamic)obj).Values, i), ref indentation)}";
+					if (i != ((dynamic)obj).Count - 1)
+					{
+						ret += $",\n";
+					}
+				}
+				indentation--;
+				indent = BuildIndent(indentation);
+				return ret + $"\n{indent}}}";
+			}
+			else if (obj_type == typeof(string))
+			{
+				return (string)obj;
+			}
+			else if (obj_type.IsPrimitive)
+			{
+				if (obj_type != typeof(char))
+				{
+					return obj.ToHexString();
+				}
+				else
+				{
+					return Program.shift_jis.GetString(new byte[] { (byte)(char)obj });
+				}
+			}
+			else if (!obj_type.IsAbstract && !obj_type.IsEnum)
 			{
 				List<string> field_data = new();
 				TypedReference tref = __makeref(obj);
-				foreach (FieldInfo field in obj_type.GetFields())
+				string ret = $"{obj_type.Name}\n{indent}{{\n";
+				indentation++;
+				indent = BuildIndent(indentation);
+				FieldInfo[] fields = obj_type.GetFields();
+				for (int i = 0; i < fields.Length; i++)
 				{
-					field_data.Add($"{field.Name,-16} = {field.GetValueDirect(tref)}");
+					ret += $"{indent}{fields[i].Name} = {RecursiveToString(fields[i].GetValueDirect(tref), ref indentation)}";
+					if (i != fields.Length - 1)
+					{
+						ret += $",\n";
+					}
 				}
-				return $"{obj_type.Name}\n{{\n\t{string.Join("\n\t", field_data)}\n}}\n";
+				indentation--;
+				indent = BuildIndent(indentation);
+				ret += $"\n{indent}}}";
+				return ret;
 			}
-			// return the default string
 			return obj.ToString();
+		}
+
+		private static string BuildIndent(int indentation)
+		{
+			string indent = "";
+			for (int i = 0; i < indentation; i++)
+			{
+				indent += "    ";
+			}
+			return indent;
 		}
 
 		/// <summary>
@@ -174,6 +226,15 @@ namespace CharaReader
 					string data = (string)field.GetValue(obj) ?? "";
 					ret += ObjectSize(data);
 				}
+				else if ((field.FieldType.BaseType?.Name.Equals("Ptr_Custom`1")).GetValueOrDefault())
+				{
+					object val = field.GetValue(obj);
+					if (val == null)
+					{
+						val = IntPtr.Zero;
+					}
+					ret += ObjectSize((IntPtr)val);
+				}
 				else
 				{
 					object val = field.GetValue(obj);
@@ -203,6 +264,10 @@ namespace CharaReader
 			if (obj is string)
 			{
 				name = "string";
+			}
+			else if (obj is IntPtr)
+			{
+				name = "intptr";
 			}
 			// ignore any and all namespace inclusions
 			name = name[(name.LastIndexOf('.') + 1)..].ToLowerInvariant();
@@ -235,26 +300,10 @@ namespace CharaReader
 				"char[]" => (sizeof(char) / 2) * (((obj as char[])?.Length ?? 0) + 1),
 				"string" => (sizeof(char) / 2) * (((obj as string)?.Length ?? 0) + 1),
 				"string[]" => ((obj as string[])?.Sum(a => (a ?? "").ObjectSize()) ?? (sizeof(char) / 2)),
+				"intptr" => sizeof(int),
 				_ => throw new Exception($"Unhandled type: {obj}")
 			};
 			return ret;
-		}
-
-		/// <summary>
-		/// Attempts to get a field from an object.
-		/// </summary>
-		/// <param name="obj">The object whats field to query.</param>
-		/// <param name="name">The name of the field to query.</param>
-		/// <param name="value">The field's value if it exists.</param>
-		/// <returns><see langword="false"/> if the field does not exist. <see langword="true"/> otherwise.</returns>
-		public static bool TryGetField(this object obj, string name, out dynamic value)
-		{
-			// attempt to find the first instance of the field with the same name
-			FieldInfo info = obj.GetType().GetFields().FirstOrDefault(a => a.Name == name);
-			// set the out parameter to the resulting value of the field obtained
-			value = info?.GetValue(obj);
-			// return if the field existed
-			return info != null;
 		}
 
 		public static string Align(this string value, int alignment)
@@ -292,6 +341,52 @@ namespace CharaReader
 				end = data.Length;
 			}
 			return Program.shift_jis.GetString(data.AsSpan()[offset..end]);
+		}
+
+		public static bool TypeToEnum<T>(object o, out T value) where T : struct
+		{
+			string name = o.GetType().Name;
+			string real_name = "";
+			for (int i = 0; i < name.Length; i++)
+			{
+				if (char.IsUpper(name[i]))
+				{
+					real_name += '_';
+				}
+				real_name += char.ToUpper(name[i]);
+			}
+			return Enum.TryParse(real_name, out value);
+		}
+
+		public static bool EnumToType<T>(in T value, out Type o) where T : struct
+		{
+			// store the name of the value
+			string name = $"{value}";
+			string real_name = "";
+			string[] sections = name.Split('_');
+			for (int i = 0; i < sections.Length; i++)
+			{
+				if (sections[i].Length == 0)
+				{
+					real_name += "_";
+					continue;
+				}
+				else if (byte.TryParse(sections[i], NumberStyles.HexNumber, null, out _))
+				{
+					real_name += sections[i];
+				}
+				else
+				{
+					real_name += $"{char.ToUpperInvariant(sections[i][0])}{sections[i][1..].ToLowerInvariant()}";
+				}
+
+				if (i + 1 < sections.Length)
+				{
+					real_name += "_";
+				}
+			}
+			o = Assembly.GetExecutingAssembly().GetTypes().FirstOrDefault(a => a.IsClass && !a.IsAbstract && a.Name == real_name);
+			return o != null;
 		}
 	}
 }
